@@ -82,3 +82,27 @@ test('review from array with minimal fields', function () {
         ->and($review->hasMedia())->toBeFalse()
         ->and($review->isAnonymous)->toBeFalse();
 });
+
+test('activity parses reviews AI summary', function () {
+    $summary = ['summary' => 'Great tour', 'reviewsAnalyzedCount' => 20, 'reviewPeriodDays' => 90];
+
+    expect(Activity::fromArray(['id' => 1, 'reviewsAiSummary' => $summary])->reviewsAiSummary)->toBe($summary)
+        ->and(Activity::fromArray(['id' => 1])->reviewsAiSummary)->toBeNull();
+});
+
+test('review parses enjoyment, hasUpvoted and isTestData', function () {
+    $review = Review::fromArray([
+        'id' => 1,
+        'enjoyment' => 'loved it',
+        'hasUpvoted' => true,
+        'isTestData' => false,
+    ]);
+    $minimal = Review::fromArray(['id' => 2, 'enjoyment' => null, 'isTestData' => null]);
+
+    expect($review->enjoyment)->toBe('loved it')
+        ->and($review->hasUpvoted)->toBeTrue()
+        ->and($review->isTestData)->toBeFalse()
+        ->and($minimal->enjoyment)->toBeNull()
+        ->and($minimal->hasUpvoted)->toBeFalse()
+        ->and($minimal->isTestData)->toBeNull();
+});

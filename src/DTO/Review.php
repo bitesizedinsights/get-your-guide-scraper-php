@@ -28,6 +28,9 @@ final readonly class Review
         public array $replies = [],
         public ?int $optionId = null,
         public bool $isPartnerReview = false,
+        public ?string $enjoyment = null,
+        public bool $hasUpvoted = false,
+        public ?bool $isTestData = null,
     ) {}
 
     /**
@@ -51,6 +54,9 @@ final readonly class Review
             replies: $data['replies'] ?? [],
             optionId: isset($data['optionId']) ? (int) $data['optionId'] : null,
             isPartnerReview: $data['isPartnerReview'] ?? false,
+            enjoyment: $data['enjoyment'] ?? null,
+            hasUpvoted: (bool) ($data['hasUpvoted'] ?? false),
+            isTestData: isset($data['isTestData']) ? (bool) $data['isTestData'] : null,
         );
     }
 

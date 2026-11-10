@@ -13,6 +13,7 @@ final readonly class Activity
      * @param  array<string, mixed>|null  $badges
      * @param  array<int, array<string, mixed>>  $images
      * @param  array<int, array<string, mixed>>  $reviews
+     * @param  array<string, mixed>|null  $reviewsAiSummary
      * @param  array<string, mixed>|null  $details
      * @param  array<string, mixed>|null  $availabilities
      */
@@ -30,6 +31,7 @@ final readonly class Activity
         public array $reviews = [],
         public ?array $details = null,
         public ?array $availabilities = null,
+        public ?array $reviewsAiSummary = null,
     ) {}
 
     /**
@@ -51,6 +53,7 @@ final readonly class Activity
             reviews: $data['reviews'] ?? [],
             details: $data['details'] ?? null,
             availabilities: $data['availabilities'] ?? null,
+            reviewsAiSummary: $data['reviewsAiSummary'] ?? null,
         );
     }
 

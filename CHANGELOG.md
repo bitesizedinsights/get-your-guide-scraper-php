@@ -10,6 +10,8 @@ All notable changes to this project are documented in this file. The format is b
 - `scrapeReviews()` accepts `sort` with the new `ReviewSort` enum.
 - All three are only sent to the Actor when set.
 
+- DTO output fields: `Activity::$reviewsAiSummary` (`?array`), `Review::$enjoyment` (`?string`), `Review::$hasUpvoted` (`bool`) and `Review::$isTestData` (`?bool`).
+
 ### Fixed
 
 - `waitForFinish` is now capped at 60 seconds (the Apify API maximum) instead of being sent as the full `timeout`. The client re-polls `GET /actor-runs/{id}` until the run is no longer in progress or `Config::$timeout` is reached, in which case an `ApiException` is thrown.

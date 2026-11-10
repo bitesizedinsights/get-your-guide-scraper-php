@@ -15,6 +15,12 @@ use GYGScraper\Exception\RateLimitException;
 
 final class Client
 {
+    /** Maximum waitForFinish value accepted by the Apify API. */
+    private const MAX_WAIT_SECONDS = 60;
+
+    /** Run statuses that mean the run is still in progress. */
+    private const RUNNING_STATUSES = ['READY', 'RUNNING', 'TIMING-OUT', 'ABORTING'];
+
     private readonly ClientInterface $http;
 
     private readonly Config $config;
@@ -126,17 +132,19 @@ final class Client
     private function runActor(string $actorId, array $input, callable $mapper): array
     {
         try {
+            $deadline = time() + $this->config->timeout;
             $response = $this->http->request(
                 'POST',
                 $this->url("/acts/{$actorId}/runs"),
                 $this->options([
                     'json' => $input,
-                    'query' => ['waitForFinish' => $this->config->timeout],
+                    'query' => ['waitForFinish' => max(0, min(self::MAX_WAIT_SECONDS, $this->config->timeout))],
                 ])
             );
 
             /** @var array<string, mixed> $result */
             $result = json_decode($response->getBody()->getContents(), true);
+            $result = $this->awaitRun($result, $deadline);
 
             if (! isset($result['data']['defaultDatasetId'])) {
                 throw new ApiException('Invalid API response: missing dataset ID');
@@ -148,6 +156,48 @@ final class Client
             return $this->fetchDataset($datasetId, $mapper);
         } catch (GuzzleException $e) {
             $this->handleGuzzleException($e);
+        }
+    }
+
+    /**
+     * Re-polls the run (each wait capped at the API maximum of 60 seconds) until it is no longer in progress
+     * or the overall timeout is reached.
+     *
+     * @param  array<string, mixed>  $result
+     * @return array<string, mixed>
+     *
+     * @throws ApiException
+     * @throws GuzzleException
+     */
+    private function awaitRun(array $result, int $deadline): array
+    {
+        while (true) {
+            $status = $result['data']['status'] ?? null;
+
+            if (! is_string($status) || ! in_array($status, self::RUNNING_STATUSES, true)) {
+                return $result;
+            }
+
+            $remaining = $deadline - time();
+
+            if ($remaining <= 0) {
+                throw new ApiException("Actor run did not finish within {$this->config->timeout} seconds");
+            }
+
+            $runId = $result['data']['id'] ?? null;
+
+            if (! is_string($runId)) {
+                throw new ApiException('Invalid API response: missing run ID');
+            }
+
+            $response = $this->http->request(
+                'GET',
+                $this->url("/actor-runs/{$runId}"),
+                $this->options(['query' => ['waitForFinish' => min(self::MAX_WAIT_SECONDS, $remaining)]])
+            );
+
+            /** @var array<string, mixed> $result */
+            $result = json_decode($response->getBody()->getContents(), true);
         }
     }
 

@@ -157,6 +157,8 @@ $client = (new Client(new Config(timeout: 600)))->setApifyKey($apiToken);
 
 The API key is set with `setApifyKey()`. If you skip it, the client reads `APIFY_API_TOKEN` or `APIFY_TOKEN` from the environment and throws `MissingApiKeyException` on the first API call when neither is set. A custom Guzzle client can be passed as second constructor argument.
 
+`timeout` is the overall time in seconds the client waits for a run to finish. The Apify API caps each `waitForFinish` call at 60 seconds, so the client polls the run in waits of at most 60 seconds until it is finished or the timeout is reached (then an `ApiException` is thrown).
+
 ## Error Handling
 
 ```php

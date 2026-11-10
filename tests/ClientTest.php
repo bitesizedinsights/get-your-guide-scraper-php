@@ -100,3 +100,52 @@ test('throws MissingApiKeyException when no key is set anywhere', function () {
 test('client works with its default HTTP client', function () {
     expect(new Client)->toBeInstanceOf(Client::class);
 });
+
+function runResponse(string $status, int $code = 200): Response
+{
+    return new Response($code, [], json_encode(
+        ['data' => ['id' => 'run1', 'status' => $status, 'defaultDatasetId' => 'ds1']],
+        JSON_THROW_ON_ERROR
+    ));
+}
+
+test('caps waitForFinish at 60 seconds', function () {
+    $history = [];
+    makeClient(successfulRun(), $history)->scrapeActivities(city: 'Rome');
+
+    parse_str($history[0]['request']->getUri()->getQuery(), $query);
+
+    expect($query['waitForFinish'])->toBe('60');
+});
+
+test('keeps re-polling until the run is terminal, each wait capped at 60 seconds', function () {
+    $history = [];
+    $client = makeClient([
+        runResponse('RUNNING', 201),
+        runResponse('RUNNING'),
+        runResponse('SUCCEEDED'),
+        new Response(200, [], '[]'),
+    ], $history);
+
+    $client->scrapeActivities(city: 'Rome');
+
+    expect($history)->toHaveCount(4)
+        ->and($history[1]['request']->getUri()->getPath())->toEndWith('/actor-runs/run1')
+        ->and($history[2]['request']->getUri()->getPath())->toEndWith('/actor-runs/run1')
+        ->and($history[3]['request']->getUri()->getPath())->toEndWith('/datasets/ds1/items');
+
+    parse_str($history[1]['request']->getUri()->getQuery(), $query);
+    expect((int) $query['waitForFinish'])->toBeLessThanOrEqual(60)->toBeGreaterThan(0);
+});
+
+test('throws when the overall timeout is reached while the run is still in progress', function () {
+    $history = [];
+    $stack = HandlerStack::create(new MockHandler([runResponse('RUNNING', 201)]));
+    $stack->push(Middleware::history($history));
+    $client = (new Client(new GYGScraper\Config(timeout: 0), new HttpClient(['handler' => $stack])))
+        ->setApifyKey('k');
+
+    expect(fn () => $client->scrapeActivities(city: 'Rome'))
+        ->toThrow(GYGScraper\Exception\ApiException::class, 'did not finish within 0 seconds')
+        ->and($history)->toHaveCount(1);
+});

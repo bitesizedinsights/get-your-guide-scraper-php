@@ -73,7 +73,8 @@ $activities = $client->scrapeActivities(
 | `limit` | `int` | `50` | Max activities to return |
 | `sorting` | `SortOrder` | `Popularity` | Sort order |
 | `locale` | `Locale` | `EnUS` | Language/locale for results |
-| `currency` | `Currency` | `USD` | Currency for prices |
+| `currency` | `ReviewSort` | `Recommended` |
+| `Currency` | `USD` | Currency for prices |
 | `withDetails` | `bool` | `false` | Fetch full descriptions and highlights |
 | `withImages` | `bool` | `false` | Fetch image galleries |
 | `withReviews` | `bool` | `false` | Fetch review data |
@@ -83,6 +84,10 @@ $activities = $client->scrapeActivities(
 | `endDate` | `?string` | `null` | Filter by date range (YYYY-MM-DD) |
 | `minPrice` | `?float` | `null` | Minimum price filter |
 | `maxPrice` | `?float` | `null` | Maximum price filter |
+| `page` | `?int` | `null` | Result page, 1-1000 (Actor default 1) |
+| `timezone` | `?string` | `null` | IANA timezone, e.g. `Europe/Berlin` (Actor default) |
+
+Invalid `page` or `timezone` values throw `InvalidArgumentException` before any request is sent.
 
 **Activity DTO helpers:**
 
@@ -123,6 +128,7 @@ foreach ($reviews as $review) {
 | `activityId` | `int` | *(required)* | GYG activity ID |
 | `limit` | `int` | `50` | Max reviews to return |
 | `locale` | `Locale` | `EnUS` | Language for results |
+| `sort` | `?ReviewSort` | `null` | Review sort order (Actor default `Recommended`) |
 
 **Review DTO helpers:**
 

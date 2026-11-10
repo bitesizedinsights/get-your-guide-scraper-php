@@ -12,6 +12,7 @@ use GYGScraper\DTO\Review;
 use GYGScraper\Exception\ApiException;
 use GYGScraper\Exception\MissingApiKeyException;
 use GYGScraper\Exception\RateLimitException;
+use InvalidArgumentException;
 
 final class Client
 {
@@ -46,8 +47,10 @@ final class Client
     /**
      * Scrape activities for a city or location.
      *
+     *
      * @return Activity[]
      *
+     * @throws InvalidArgumentException when `page` is outside 1-1000 or `timezone` is malformed
      * @throws ApiException
      * @throws RateLimitException
      */
@@ -67,7 +70,17 @@ final class Client
         ?string $endDate = null,
         ?float $minPrice = null,
         ?float $maxPrice = null,
+        ?int $page = null,
+        ?string $timezone = null,
     ): array {
+        if ($page !== null && ($page < 1 || $page > 1000)) {
+            throw new InvalidArgumentException('page must be between 1 and 1000');
+        }
+
+        if ($timezone !== null && preg_match('#^[A-Za-z0-9_+\-]+(/[A-Za-z0-9_+\-]+)*$#', $timezone) !== 1) {
+            throw new InvalidArgumentException('timezone must be an IANA timezone name such as Europe/Berlin');
+        }
+
         $input = array_filter([
             'city' => $city,
             'locationId' => $locationId,
@@ -84,6 +97,8 @@ final class Client
             'endDate' => $endDate,
             'minPrice' => $minPrice,
             'maxPrice' => $maxPrice,
+            'page' => $page,
+            'timezone' => $timezone,
         ], static fn (mixed $v): bool => $v !== null && $v !== false);
 
         return $this->runActor(
@@ -105,12 +120,17 @@ final class Client
         int $activityId,
         int $limit = 50,
         Locale $locale = Locale::EnUS,
+        ?ReviewSort $sort = null,
     ): array {
         $input = [
             'activityId' => $activityId,
             'limit' => $limit,
             'locale' => $locale->value,
         ];
+
+        if ($sort !== null) {
+            $input['sort'] = $sort->value;
+        }
 
         return $this->runActor(
             $this->config->reviewsActorId,

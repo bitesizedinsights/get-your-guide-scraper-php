@@ -149,3 +149,40 @@ test('throws when the overall timeout is reached while the run is still in progr
         ->toThrow(GYGScraper\Exception\ApiException::class, 'did not finish within 0 seconds')
         ->and($history)->toHaveCount(1);
 });
+
+function sentInput(array $history): array
+{
+    return json_decode((string) $history[0]['request']->getBody(), true, flags: JSON_THROW_ON_ERROR);
+}
+
+test('page and timezone are passed through only when set', function () {
+    $history = [];
+    makeClient(successfulRun(), $history)->scrapeActivities(city: 'Rome');
+    expect(sentInput($history))->not->toHaveKeys(['page', 'timezone']);
+
+    $history = [];
+    makeClient(successfulRun(), $history)->scrapeActivities(city: 'Rome', page: 3, timezone: 'Europe/Rome');
+    expect(sentInput($history))->toMatchArray(['page' => 3, 'timezone' => 'Europe/Rome']);
+});
+
+test('invalid page and timezone are rejected client-side', function () {
+    $history = [];
+    $client = makeClient([], $history);
+
+    expect(fn () => $client->scrapeActivities(city: 'Rome', page: 0))->toThrow(InvalidArgumentException::class)
+        ->and(fn () => $client->scrapeActivities(city: 'Rome', page: 1001))
+        ->toThrow(InvalidArgumentException::class)
+        ->and(fn () => $client->scrapeActivities(city: 'Rome', timezone: 'Not a zone'))
+        ->toThrow(InvalidArgumentException::class)
+        ->and($history)->toBeEmpty();
+});
+
+test('reviews sort is passed through only when set', function () {
+    $history = [];
+    makeClient(successfulRun(), $history)->scrapeReviews(activityId: 1);
+    expect(sentInput($history))->not->toHaveKey('sort');
+
+    $history = [];
+    makeClient(successfulRun(), $history)->scrapeReviews(activityId: 1, sort: GYGScraper\ReviewSort::Recommended);
+    expect(sentInput($history))->toMatchArray(['sort' => 'recommended']);
+});

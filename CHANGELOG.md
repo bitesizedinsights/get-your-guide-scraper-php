@@ -14,6 +14,7 @@ All notable changes to this project are documented in this file. The format is b
 
 ### Fixed
 
+- The run status is now checked: a run that ends as `FAILED`, `TIMED-OUT` or `ABORTED` throws an `ApiException` (`Actor run ended with status <status>: <statusMessage>`) instead of silently returning an empty or partial list; the dataset is not requested. A response without a status is still accepted.
 - `waitForFinish` is now capped at 60 seconds (the Apify API maximum) instead of being sent as the full `timeout`. The client re-polls `GET /actor-runs/{id}` until the run is no longer in progress or `Config::$timeout` is reached, in which case an `ApiException` is thrown.
 
 ### Changed

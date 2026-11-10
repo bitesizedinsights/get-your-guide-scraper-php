@@ -182,6 +182,8 @@ try {
 }
 ```
 
+If the Actor run ends with any status other than `SUCCEEDED` (`FAILED`, `TIMED-OUT`, `ABORTED`), an `ApiException` is thrown with the status and the run's status message, e.g. `Actor run ended with status TIMED-OUT: <statusMessage>`. The dataset is not fetched in that case. A run response without a status field is treated as successful.
+
 ## Requirements
 
 - PHP 8.3+

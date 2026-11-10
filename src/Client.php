@@ -165,6 +165,7 @@ final class Client
             /** @var array<string, mixed> $result */
             $result = json_decode($response->getBody()->getContents(), true);
             $result = $this->awaitRun($result, $deadline);
+            $this->assertSucceeded($result);
 
             if (! isset($result['data']['defaultDatasetId'])) {
                 throw new ApiException('Invalid API response: missing dataset ID');
@@ -177,6 +178,28 @@ final class Client
         } catch (GuzzleException $e) {
             $this->handleGuzzleException($e);
         }
+    }
+
+    /**
+     * A run without a status field is accepted (legacy behaviour); any other status than SUCCEEDED is an error.
+     *
+     * @param  array<string, mixed>  $result
+     *
+     * @throws ApiException
+     */
+    private function assertSucceeded(array $result): void
+    {
+        $status = $result['data']['status'] ?? null;
+
+        if (! is_string($status) || $status === 'SUCCEEDED') {
+            return;
+        }
+
+        $message = $result['data']['statusMessage'] ?? null;
+
+        throw new ApiException(
+            "Actor run ended with status {$status}".(is_string($message) && $message !== '' ? ": {$message}" : '')
+        );
     }
 
     /**

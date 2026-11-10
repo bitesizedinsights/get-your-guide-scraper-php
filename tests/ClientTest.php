@@ -8,6 +8,7 @@ use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Middleware;
 use GuzzleHttp\Psr7\Response;
 use GYGScraper\Client;
+use GYGScraper\Exception\ApiException;
 use GYGScraper\Exception\MissingApiKeyException;
 
 /**
@@ -186,3 +187,21 @@ test('reviews sort is passed through only when set', function () {
     makeClient(successfulRun(), $history)->scrapeReviews(activityId: 1, sort: GYGScraper\ReviewSort::Recommended);
     expect(sentInput($history))->toMatchArray(['sort' => 'recommended']);
 });
+
+test('SUCCEEDED runs return data', function () {
+    $history = [];
+    $client = makeClient([runResponse('SUCCEEDED', 201), new Response(200, [], '[]')], $history);
+
+    expect($client->scrapeReviews(activityId: 1))->toBe([])
+        ->and($history)->toHaveCount(2);
+});
+
+test('non-successful terminal runs throw without requesting the dataset', function (string $status) {
+    $history = [];
+    $body = ['data' => ['id' => 'run1', 'status' => $status, 'statusMessage' => 'boom', 'defaultDatasetId' => 'ds1']];
+    $client = makeClient([new Response(201, [], json_encode($body, JSON_THROW_ON_ERROR))], $history);
+
+    expect(fn () => $client->scrapeReviews(activityId: 1))
+        ->toThrow(ApiException::class, "Actor run ended with status {$status}: boom");
+    expect($history)->toHaveCount(1);
+})->with(['FAILED', 'TIMED-OUT', 'ABORTED']);

@@ -8,8 +8,10 @@ use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Middleware;
 use GuzzleHttp\Psr7\Response;
 use GYGScraper\Client;
+use GYGScraper\Config;
 use GYGScraper\Exception\ApiException;
 use GYGScraper\Exception\MissingApiKeyException;
+use GYGScraper\ReviewSort;
 
 /**
  * @param  list<Response>  $responses
@@ -143,11 +145,11 @@ test('throws when the overall timeout is reached while the run is still in progr
     $history = [];
     $stack = HandlerStack::create(new MockHandler([runResponse('RUNNING', 201)]));
     $stack->push(Middleware::history($history));
-    $client = (new Client(new GYGScraper\Config(timeout: 0), new HttpClient(['handler' => $stack])))
+    $client = (new Client(new Config(timeout: 0), new HttpClient(['handler' => $stack])))
         ->setApifyKey('k');
 
     expect(fn () => $client->scrapeActivities(city: 'Rome'))
-        ->toThrow(GYGScraper\Exception\ApiException::class, 'did not finish within 0 seconds')
+        ->toThrow(ApiException::class, 'did not finish within 0 seconds')
         ->and($history)->toHaveCount(1);
 });
 
@@ -184,7 +186,7 @@ test('reviews sort is passed through only when set', function () {
     expect(sentInput($history))->not->toHaveKey('sort');
 
     $history = [];
-    makeClient(successfulRun(), $history)->scrapeReviews(activityId: 1, sort: GYGScraper\ReviewSort::Recommended);
+    makeClient(successfulRun(), $history)->scrapeReviews(activityId: 1, sort: ReviewSort::Recommended);
     expect(sentInput($history))->toMatchArray(['sort' => 'recommended']);
 });
 

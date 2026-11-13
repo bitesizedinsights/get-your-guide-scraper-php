@@ -11,10 +11,11 @@ final readonly class Activity
      * @param  array<string, mixed>|null  $rating
      * @param  array<string, mixed>|null  $location
      * @param  array<string, mixed>|null  $badges
-     * @param  array<int, array<string, mixed>>  $images
+     * @param  list<array{id: string, url: string, urls: array{full: string, thumbnail: string}}>  $images
      * @param  array<int, array<string, mixed>>  $reviews
      * @param  array<string, mixed>|null  $reviewsAiSummary
-     * @param  array<string, mixed>|null  $details
+     * @param  array{title?: string, description?: string, url?: string, rating?: float, review_count?: int,
+     *     price_from?: float, currency?: string, itinerary?: list<string>}|null  $details
      * @param  array<string, mixed>|null  $availabilities
      */
     public function __construct(

@@ -47,6 +47,8 @@ final class Client
     /**
      * Scrape activities for a city or location.
      *
+     * `withDetails` adds a compact `details` array (title, description, url, rating, review_count, price_from,
+     * currency, itinerary); `withImages` adds `images` (id, 1200px url, urls.full, urls.thumbnail).
      *
      * @return Activity[]
      *

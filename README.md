@@ -73,8 +73,7 @@ $activities = $client->scrapeActivities(
 | `limit` | `int` | `50` | Max activities to return |
 | `sorting` | `SortOrder` | `Popularity` | Sort order |
 | `locale` | `Locale` | `EnUS` | Language/locale for results |
-| `currency` | `ReviewSort` | `Recommended` |
-| `Currency` | `USD` | Currency for prices |
+| `currency` | `Currency` | `USD` | Currency for prices |
 | `withDetails` | `bool` | `false` | Add a compact `details` summary (title, short description, URL, rating, review count, starting price, currency, itinerary) |
 | `withImages` | `bool` | `false` | Add `images` (id, 1200px `url`, `urls.full` and `urls.thumbnail`) |
 | `withReviews` | `bool` | `false` | Fetch review data |

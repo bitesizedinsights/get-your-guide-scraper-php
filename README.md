@@ -166,6 +166,10 @@ The API key is set with `setApifyKey()`. If you skip it, the client reads `APIFY
 
 `timeout` is the overall time in seconds the client waits for a run to finish. The Apify API caps each `waitForFinish` call at 60 seconds, so the client polls the run in waits of at most 60 seconds until it is finished or the timeout is reached (then an `ApiException` is thrown).
 
+## Free Plan Limits
+
+Free-plan users get 5 runs in total, and each run returns at most 10 results: `scrapeActivities()` returns at most 10 activities (and 10 reviews per activity when `withReviews` is enabled), `scrapeReviews()` returns at most 10 reviews. Larger `limit` and `limitReviews` values are capped to 10. Test runs started from the Apify Console have the same cap.
+
 ## Error Handling
 
 ```php

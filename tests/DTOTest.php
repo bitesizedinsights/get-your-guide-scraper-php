@@ -106,3 +106,15 @@ test('review parses enjoyment, hasUpvoted and isTestData', function () {
         ->and($minimal->hasUpvoted)->toBeFalse()
         ->and($minimal->isTestData)->toBeNull();
 });
+
+test('activity id is numeric even when the proxy delivers the card block id', function () {
+    $url = 'https://www.getyourguide.com/berlin-l17/berlin-bus-tour-t218949/?ranking_uuid=a&q=Berlin';
+
+    expect(Activity::fromArray(['id' => 'all-activities-218949', 'url' => $url])->id)->toBe(218949)
+        ->and(Activity::fromArray(['id' => 'all-activities-55'])->id)->toBe(55)
+        ->and(Activity::fromArray(['id' => '77'])->id)->toBe(77);
+});
+
+test('activity without a derivable numeric id throws instead of becoming 0', function () {
+    Activity::fromArray(['id' => 'all-activities-x']);
+})->throws(InvalidArgumentException::class);

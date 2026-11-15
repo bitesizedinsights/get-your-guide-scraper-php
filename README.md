@@ -74,7 +74,7 @@ $activities = $client->scrapeActivities(
 | `sorting` | `SortOrder` | `Popularity` | Sort order |
 | `locale` | `Locale` | `EnUS` | Language/locale for results |
 | `currency` | `Currency` | `USD` | Currency for prices |
-| `withDetails` | `bool` | `false` | Add a compact `details` summary (title, short description, URL, rating, review count, starting price, currency, itinerary) |
+| `withDetails` | `bool` | `false` | Add a compact `details` summary (title, short description, URL, rating, review count, starting price, currency, itinerary; `price_from` and `currency` come from the activity page and may differ from the requested `currency`) |
 | `withImages` | `bool` | `false` | Add `images` (id, 1200px `url`, `urls.full` and `urls.thumbnail`) |
 | `withReviews` | `bool` | `false` | Fetch review data |
 | `withAvailabilities` | `bool` | `false` | Fetch availability calendar |

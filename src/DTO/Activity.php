@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace GYGScraper\DTO;
 
+use InvalidArgumentException;
+
 final readonly class Activity
 {
     /**
@@ -41,7 +43,7 @@ final readonly class Activity
     public static function fromArray(array $data): self
     {
         return new self(
-            id: (int) $data['id'],
+            id: self::resolveId($data),
             title: $data['title'] ?? '',
             url: $data['url'] ?? null,
             image: $data['image'] ?? null,
@@ -56,6 +58,36 @@ final readonly class Activity
             availabilities: $data['availabilities'] ?? null,
             reviewsAiSummary: $data['reviewsAiSummary'] ?? null,
         );
+    }
+
+    /**
+     * Numeric activity id. Older proxy deployments delivered the card block id (`all-activities-218949`), which a
+     * plain `(int)` cast silently turns into 0; the numeric id is then taken from the URL (`...-t218949/`).
+     *
+     * @param  array<string, mixed>  $data
+     *
+     * @throws InvalidArgumentException when no numeric id can be derived
+     */
+    private static function resolveId(array $data): int
+    {
+        $id = $data['id'] ?? null;
+
+        if (is_int($id)) {
+            return $id;
+        }
+
+        if (is_string($id) && ctype_digit($id)) {
+            return (int) $id;
+        }
+
+        $path = is_string($data['url'] ?? null) ? (string) parse_url($data['url'], PHP_URL_PATH) : '';
+
+        if (preg_match('/-t(\d+)\/?$/', $path, $match) === 1
+            || (is_string($id) && preg_match('/(\d+)$/', $id, $match) === 1)) {
+            return (int) $match[1];
+        }
+
+        throw new InvalidArgumentException('Activity id is not numeric and cannot be derived from the URL');
     }
 
     public function getPriceAmount(): ?float

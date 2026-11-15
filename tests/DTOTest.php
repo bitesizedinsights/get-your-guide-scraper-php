@@ -118,3 +118,20 @@ test('activity id is numeric even when the proxy delivers the card block id', fu
 test('activity without a derivable numeric id throws instead of becoming 0', function () {
     Activity::fromArray(['id' => 'all-activities-x']);
 })->throws(InvalidArgumentException::class);
+
+it('parses enrichmentErrors and defaults to an empty list', function () {
+    $failed = Activity::fromArray(['id' => 1, 'enrichmentErrors' => ['details', 'images']]);
+    $clean = Activity::fromArray(['id' => 2]);
+
+    expect($failed->enrichmentErrors)->toBe(['details', 'images'])
+        ->and($failed->hasEnrichmentError())->toBeTrue()
+        ->and($failed->hasEnrichmentError('details'))->toBeTrue()
+        ->and($failed->hasEnrichmentError('reviews'))->toBeFalse()
+        ->and($clean->enrichmentErrors)->toBe([])
+        ->and($clean->hasEnrichmentError())->toBeFalse();
+});
+
+it('ignores malformed enrichmentErrors entries', function () {
+    expect(Activity::fromArray(['id' => 1, 'enrichmentErrors' => ['details', 5, null]])->enrichmentErrors)
+        ->toBe(['details']);
+});

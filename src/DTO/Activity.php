@@ -19,6 +19,7 @@ final readonly class Activity
      * @param  array{title?: string, description?: string, url?: string, rating?: float, review_count?: int,
      *     price_from?: float, currency?: string, itinerary?: list<string>}|null  $details
      * @param  array<string, mixed>|null  $availabilities
+     * @param  list<string>  $enrichmentErrors  add-ons that could not be delivered, empty when all were
      */
     public function __construct(
         public int $id,
@@ -35,6 +36,7 @@ final readonly class Activity
         public ?array $details = null,
         public ?array $availabilities = null,
         public ?array $reviewsAiSummary = null,
+        public array $enrichmentErrors = [],
     ) {}
 
     /**
@@ -57,6 +59,7 @@ final readonly class Activity
             details: $data['details'] ?? null,
             availabilities: $data['availabilities'] ?? null,
             reviewsAiSummary: $data['reviewsAiSummary'] ?? null,
+            enrichmentErrors: array_values(array_filter($data['enrichmentErrors'] ?? [], is_string(...))),
         );
     }
 
@@ -88,6 +91,14 @@ final readonly class Activity
         }
 
         throw new InvalidArgumentException('Activity id is not numeric and cannot be derived from the URL');
+    }
+
+    /**
+     * True when an add-on could not be delivered for this activity (all of them, or the given one such as `details`).
+     */
+    public function hasEnrichmentError(?string $kind = null): bool
+    {
+        return $kind === null ? $this->enrichmentErrors !== [] : in_array($kind, $this->enrichmentErrors, true);
     }
 
     public function getPriceAmount(): ?float

@@ -129,7 +129,7 @@ foreach ($reviews as $review) {
 | `locale` | `Locale` | `EnUS` | Language for results |
 | `sort` | `?ReviewSort` | `null` | Review sort order (Actor default `Recommended`) |
 
-**Review DTO fields:** besides the core fields, `enjoyment` (`?string`, often empty), `hasUpvoted` (`bool`) and `isTestData` (`?bool`, usually null). `Activity::$reviewsAiSummary` (`?array`) holds the AI review summary when `withReviews` is enabled.
+**Review DTO fields:** besides the core fields, `enjoyment` (`?string`, often empty), `hasUpvoted` (`bool`) and `isTestData` (`?bool`, usually null). `Activity::$reviewsAiSummary` (`?array`) holds the AI review summary when `withReviews` is enabled. `Activity::$enrichmentErrors` (`list<string>`, empty by default) lists the add-ons (`images`, `details`, `reviews`, `reviewsAiSummary`, `availabilities`) that could not be delivered for that activity, so an empty `details` array can be told apart from a failed fetch; `$activity->hasEnrichmentError('details')` checks one kind and the Actor does not charge for add-ons listed there.
 
 **Review DTO helpers:**
 

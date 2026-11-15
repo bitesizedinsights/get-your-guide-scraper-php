@@ -6,6 +6,7 @@ All notable changes to this project are documented in this file. The format is b
 
 ### Added
 
+- `Activity::$enrichmentErrors` (`list<string>`, empty by default) and `Activity::hasEnrichmentError(?string $kind)`: the add-ons (`images`, `details`, `reviews`, `reviewsAiSummary`, `availabilities`) the Actor could not deliver for an activity; those are not charged.
 - `scrapeActivities()` accepts `page` (1-1000) and `timezone` (IANA name); invalid values throw `InvalidArgumentException`.
 - `scrapeReviews()` accepts `sort` with the new `ReviewSort` enum.
 - All three are only sent to the Actor when set.

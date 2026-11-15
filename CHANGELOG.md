@@ -4,14 +4,6 @@ All notable changes to this project are documented in this file. The format is b
 
 ## [Unreleased]
 
-### Added
-
-- Client-side input validation that mirrors the Actor, throwing `InvalidArgumentException` before any API call: `city` or `locationId` required (`city` non-blank, max 200 characters), `minPrice` and `maxPrice` only as a pair with `minPrice <= maxPrice`, dates as valid `YYYY-MM-DD` that are today or later with `endDate >= startDate`, and numeric ranges (`locationId` and `activityId` 1-2147483647, `limit` 0-100000 for activities and 0-10000 for reviews, `limitReviews` 1-5000, prices 0-10000000 and finite, `timezone` max 64 characters).
-
-### Changed
-
-- `scrapeActivities()` now rejects `limitReviews` below 1 and sends `city` trimmed; `scrapeReviews()` validates `activityId` and `limit`. `timezone` and `page` checks moved into the shared validator (same rules).
-
 ## [0.1.0] - 2026-11-15
 
 First release.
@@ -30,3 +22,5 @@ First release.
 - Free-plan limits documented: 5 runs in total, at most 10 results per run (larger `limit` and `limitReviews` are capped to 10).
 - `withDetails` returns a compact `details` summary and `withImages` returns `images` with 1200px `url`, `urls.full` and `urls.thumbnail`.
 - Guzzle 7 and 8 supported (`guzzlehttp/guzzle` `^7.0 || ^8.0`); tests cover the error mapping on both majors. Requires PHP 8.3+.
+- Client-side input validation that mirrors the Actor, throwing `InvalidArgumentException` before any API call: `city` or `locationId` required (`city` non-blank, max 200 characters), `minPrice` and `maxPrice` only as a pair with `minPrice <= maxPrice`, dates as valid `YYYY-MM-DD` that are today or later with `endDate >= startDate`, and numeric ranges (`locationId` and `activityId` 1-2147483647, `limit` 0-100000 for activities and 0-10000 for reviews, `limitReviews` 1-5000, prices 0-10000000 and finite, `timezone` max 64 characters).
+- `scrapeActivities()` now rejects `limitReviews` below 1 and sends `city` trimmed; `scrapeReviews()` validates `activityId` and `limit`. `timezone` and `page` checks moved into the shared validator (same rules).

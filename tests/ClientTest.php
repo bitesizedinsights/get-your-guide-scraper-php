@@ -229,3 +229,137 @@ test('HTTP errors and connection failures map to ApiException (Guzzle 7 and 8)',
     $client = makeClient([new ConnectException('no route', new Request('POST', 'https://api.apify.com'))]);
     expect(fn () => $client->scrapeReviews(activityId: 1))->toThrow(ApiException::class, 'API request failed');
 });
+
+function expectInvalid(callable $call, string $message): void
+{
+    $history = [];
+    $client = makeClient([], $history);
+
+    expect(fn () => $call($client))->toThrow(InvalidArgumentException::class, $message)
+        ->and($history)->toBeEmpty();
+}
+
+function daysFromToday(int $days): string
+{
+    return (new DateTimeImmutable('today'))->modify(sprintf('%+d days', $days))->format('Y-m-d');
+}
+
+test('city or locationId is required', function () {
+    expectInvalid(fn (Client $c) => $c->scrapeActivities(), 'Either city or locationId is required');
+    expectInvalid(fn (Client $c) => $c->scrapeActivities(city: '   '), 'city must be a non-empty string');
+    expectInvalid(fn (Client $c) => $c->scrapeActivities(city: str_repeat('a', 201)), 'at most 200');
+
+    $history = [];
+    makeClient(successfulRun(), $history)->scrapeActivities(locationId: 5);
+    makeClient(successfulRun(), $history)->scrapeActivities(city: str_repeat('a', 200));
+    expect($history)->toHaveCount(4);
+});
+
+test('city is sent trimmed', function () {
+    $history = [];
+    makeClient(successfulRun(), $history)->scrapeActivities(city: '  Rome ');
+    expect(sentInput($history)['city'])->toBe('Rome');
+});
+
+test('locationId and activityId bounds', function () {
+    expectInvalid(fn (Client $c) => $c->scrapeActivities(locationId: 0), 'locationId must be a positive integer');
+    expectInvalid(fn (Client $c) => $c->scrapeActivities(locationId: 2147483648), 'locationId must be <= 2147483647');
+    expectInvalid(fn (Client $c) => $c->scrapeReviews(activityId: 0), 'activityId must be a positive integer');
+    expectInvalid(fn (Client $c) => $c->scrapeReviews(activityId: 2147483648), 'activityId must be <= 2147483647');
+
+    $history = [];
+    makeClient(successfulRun(), $history)->scrapeActivities(locationId: 2147483647);
+    makeClient(successfulRun(), $history)->scrapeReviews(activityId: 2147483647);
+    expect($history)->toHaveCount(4);
+});
+
+test('limit, page and limitReviews bounds', function () {
+    expectInvalid(fn (Client $c) => $c->scrapeActivities(city: 'Rome', limit: -1), 'limit must be non-negative');
+    expectInvalid(fn (Client $c) => $c->scrapeActivities(city: 'Rome', limit: 100001), 'limit must be <= 100000');
+    expectInvalid(fn (Client $c) => $c->scrapeActivities(city: 'Rome', page: 0), 'page must be >= 1');
+    expectInvalid(fn (Client $c) => $c->scrapeActivities(city: 'Rome', page: 1001), 'page must be <= 1000');
+    expectInvalid(fn (Client $c) => $c->scrapeActivities(city: 'Rome', limitReviews: 0), 'limitReviews must be >= 1');
+    expectInvalid(
+        fn (Client $c) => $c->scrapeActivities(city: 'Rome', limitReviews: 5001),
+        'limitReviews must be <= 5000',
+    );
+    expectInvalid(fn (Client $c) => $c->scrapeReviews(activityId: 1, limit: -1), 'limit must be a non-negative');
+    expectInvalid(fn (Client $c) => $c->scrapeReviews(activityId: 1, limit: 10001), 'limit must be <= 10000');
+
+    $history = [];
+    makeClient(successfulRun(), $history)->scrapeActivities(city: 'Rome', limit: 0, page: 1000, limitReviews: 5000);
+    makeClient(successfulRun(), $history)->scrapeActivities(city: 'Rome', limit: 100000, page: 1, limitReviews: 1);
+    makeClient(successfulRun(), $history)->scrapeReviews(activityId: 1, limit: 0);
+    makeClient(successfulRun(), $history)->scrapeReviews(activityId: 1, limit: 10000);
+    expect($history)->toHaveCount(8);
+});
+
+test('timezone length is limited', function () {
+    expectInvalid(
+        fn (Client $c) => $c->scrapeActivities(city: 'Rome', timezone: str_repeat('a', 65)),
+        'Invalid timezone',
+    );
+    expectInvalid(fn (Client $c) => $c->scrapeActivities(city: 'Rome', timezone: 'Not a zone'), 'Invalid timezone');
+});
+
+test('prices must be a valid pair', function () {
+    expectInvalid(fn (Client $c) => $c->scrapeActivities(city: 'Rome', minPrice: 5), 'must be provided together');
+    expectInvalid(fn (Client $c) => $c->scrapeActivities(city: 'Rome', maxPrice: 5), 'must be provided together');
+    expectInvalid(
+        fn (Client $c) => $c->scrapeActivities(city: 'Rome', minPrice: 10, maxPrice: 5),
+        'minPrice must be less than or equal to maxPrice',
+    );
+    expectInvalid(
+        fn (Client $c) => $c->scrapeActivities(city: 'Rome', minPrice: -1, maxPrice: 5),
+        'minPrice must be non-negative',
+    );
+    expectInvalid(
+        fn (Client $c) => $c->scrapeActivities(city: 'Rome', minPrice: 1, maxPrice: 10000001),
+        'maxPrice must be <= 10000000',
+    );
+    expectInvalid(
+        fn (Client $c) => $c->scrapeActivities(city: 'Rome', minPrice: 1, maxPrice: INF),
+        'maxPrice must be a finite number',
+    );
+
+    $history = [];
+    makeClient(successfulRun(), $history)->scrapeActivities(city: 'Rome', minPrice: 5, maxPrice: 5);
+    makeClient(successfulRun(), $history)->scrapeActivities(city: 'Rome', minPrice: 0, maxPrice: 10000000);
+    expect($history)->toHaveCount(4);
+});
+
+test('dates must be valid YYYY-MM-DD, not in the past and ordered', function () {
+    expectInvalid(
+        fn (Client $c) => $c->scrapeActivities(city: 'Rome', startDate: '2030/01/01'),
+        'Expected YYYY-MM-DD',
+    );
+    expectInvalid(
+        fn (Client $c) => $c->scrapeActivities(city: 'Rome', endDate: '2030-02-30'),
+        'Invalid endDate format',
+    );
+    expectInvalid(
+        fn (Client $c) => $c->scrapeActivities(city: 'Rome', startDate: daysFromToday(-1)),
+        'startDate must be today or in the future',
+    );
+    expectInvalid(
+        fn (Client $c) => $c->scrapeActivities(city: 'Rome', endDate: daysFromToday(-1)),
+        'endDate must be today or in the future',
+    );
+    expectInvalid(
+        fn (Client $c) => $c->scrapeActivities(city: 'Rome', startDate: daysFromToday(5), endDate: daysFromToday(4)),
+        'endDate must be after or equal to startDate',
+    );
+
+    $history = [];
+    makeClient(successfulRun(), $history)->scrapeActivities(
+        city: 'Rome',
+        startDate: daysFromToday(0),
+        endDate: daysFromToday(0),
+    );
+    makeClient(successfulRun(), $history)->scrapeActivities(
+        city: 'Rome',
+        startDate: daysFromToday(1),
+        endDate: daysFromToday(30),
+    );
+    expect($history)->toHaveCount(4);
+});

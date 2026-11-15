@@ -12,6 +12,7 @@ use GYGScraper\DTO\Review;
 use GYGScraper\Exception\ApiException;
 use GYGScraper\Exception\MissingApiKeyException;
 use GYGScraper\Exception\RateLimitException;
+use GYGScraper\Support\InputValidator;
 use InvalidArgumentException;
 
 final class Client
@@ -52,7 +53,8 @@ final class Client
      *
      * @return Activity[]
      *
-     * @throws InvalidArgumentException when `page` is outside 1-1000 or `timezone` is malformed
+     * @throws InvalidArgumentException when the input violates the Actor's rules (city or locationId missing,
+     *                                  limits/page out of range, malformed dates, unpaired or inverted prices, ...)
      * @throws ApiException
      * @throws RateLimitException
      */
@@ -75,16 +77,12 @@ final class Client
         ?int $page = null,
         ?string $timezone = null,
     ): array {
-        if ($page !== null && ($page < 1 || $page > 1000)) {
-            throw new InvalidArgumentException('page must be between 1 and 1000');
-        }
-
-        if ($timezone !== null && preg_match('#^[A-Za-z0-9_+\-]+(/[A-Za-z0-9_+\-]+)*$#', $timezone) !== 1) {
-            throw new InvalidArgumentException('timezone must be an IANA timezone name such as Europe/Berlin');
-        }
+        InputValidator::activities(
+            $city, $locationId, $limit, $limitReviews, $startDate, $endDate, $minPrice, $maxPrice, $page, $timezone,
+        );
 
         $input = array_filter([
-            'city' => $city,
+            'city' => $city === null ? null : trim($city),
             'locationId' => $locationId,
             'limit' => $limit,
             'sorting' => $sorting->value,
@@ -115,6 +113,7 @@ final class Client
      *
      * @return Review[]
      *
+     * @throws InvalidArgumentException when `activityId` is not 1-2147483647 or `limit` is not 0-10000
      * @throws ApiException
      * @throws RateLimitException
      */
@@ -124,6 +123,8 @@ final class Client
         Locale $locale = Locale::EnUS,
         ?ReviewSort $sort = null,
     ): array {
+        InputValidator::reviews($activityId, $limit);
+
         $input = [
             'activityId' => $activityId,
             'limit' => $limit,

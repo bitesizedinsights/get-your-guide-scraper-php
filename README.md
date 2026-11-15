@@ -68,9 +68,9 @@ $activities = $client->scrapeActivities(
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `city` | `?string` | `null` | City name (e.g., "Barcelona", "Tokyo") |
-| `locationId` | `?int` | `null` | GYG location ID (alternative to city) |
-| `limit` | `int` | `50` | Max activities to return |
+| `city` | `?string` | `null` | City name (e.g., "Barcelona", "Tokyo"), max 200 characters; `city` or `locationId` is required |
+| `locationId` | `?int` | `null` | GYG location ID, 1-2147483647 (alternative to city) |
+| `limit` | `int` | `50` | Max activities to return, 0-100000 (0 = unlimited) |
 | `sorting` | `SortOrder` | `Popularity` | Sort order |
 | `locale` | `Locale` | `EnUS` | Language/locale for results |
 | `currency` | `Currency` | `USD` | Currency for prices |
@@ -78,15 +78,15 @@ $activities = $client->scrapeActivities(
 | `withImages` | `bool` | `false` | Add `images` (id, 1200px `url`, `urls.full` and `urls.thumbnail`) |
 | `withReviews` | `bool` | `false` | Fetch review data |
 | `withAvailabilities` | `bool` | `false` | Fetch availability calendar |
-| `limitReviews` | `int` | `20` | Max reviews per activity |
-| `startDate` | `?string` | `null` | Filter by date range (YYYY-MM-DD) |
-| `endDate` | `?string` | `null` | Filter by date range (YYYY-MM-DD) |
-| `minPrice` | `?float` | `null` | Minimum price filter |
-| `maxPrice` | `?float` | `null` | Maximum price filter |
+| `limitReviews` | `int` | `20` | Max reviews per activity, 1-5000 |
+| `startDate` | `?string` | `null` | Filter by date range (YYYY-MM-DD, today or later) |
+| `endDate` | `?string` | `null` | Filter by date range (YYYY-MM-DD, today or later, not before `startDate`) |
+| `minPrice` | `?float` | `null` | Minimum price filter, 0-10000000; must be given together with `maxPrice` |
+| `maxPrice` | `?float` | `null` | Maximum price filter, 0-10000000; must be given together with `minPrice`, not below `minPrice` |
 | `page` | `?int` | `null` | Result page, 1-1000 (Actor default 1) |
 | `timezone` | `?string` | `null` | IANA timezone, e.g. `Europe/Berlin` (Actor default) |
 
-Invalid `page` or `timezone` values throw `InvalidArgumentException` before any request is sent.
+The client validates the input like the Actor does and throws `InvalidArgumentException` before any request is sent when: neither `city` nor `locationId` is set (or `city` is blank), `minPrice` and `maxPrice` are not given as a pair or `minPrice` is greater than `maxPrice`, a date is not a valid `YYYY-MM-DD`, lies in the past or `endDate` is before `startDate`, or a number is out of range (see the table), including a malformed `timezone`.
 
 **Activity DTO helpers:**
 
@@ -124,10 +124,12 @@ foreach ($reviews as $review) {
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `activityId` | `int` | *(required)* | GYG activity ID |
-| `limit` | `int` | `50` | Max reviews to return |
+| `activityId` | `int` | *(required)* | GYG activity ID, 1-2147483647 |
+| `limit` | `int` | `50` | Max reviews to return, 0-10000 |
 | `locale` | `Locale` | `EnUS` | Language for results |
 | `sort` | `?ReviewSort` | `null` | Review sort order (Actor default `Recommended`) |
+
+An out-of-range `activityId` or `limit` throws `InvalidArgumentException` before any request is sent.
 
 **Review DTO fields:** besides the core fields, `enjoyment` (`?string`, often empty), `hasUpvoted` (`bool`) and `isTestData` (`?bool`, usually null). `Activity::$reviewsAiSummary` (`?array`) holds the AI review summary when `withReviews` is enabled. `Activity::$enrichmentErrors` (`list<string>`, empty by default) lists the add-ons (`images`, `details`, `reviews`, `reviewsAiSummary`, `availabilities`) that could not be delivered for that activity, so an empty `details` array can be told apart from a failed fetch; `$activity->hasEnrichmentError('details')` checks one kind and the Actor does not charge for add-ons listed there.
 

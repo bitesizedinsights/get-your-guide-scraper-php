@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace GYGScraper\DTO;
 
-final readonly class Review
+use JsonSerializable;
+
+final readonly class Review implements JsonSerializable
 {
     /**
      * @param  array<string, mixed>|null  $author
@@ -58,6 +60,42 @@ final readonly class Review
             hasUpvoted: (bool) ($data['hasUpvoted'] ?? false),
             isTestData: isset($data['isTestData']) ? (bool) $data['isTestData'] : null,
         );
+    }
+
+    /**
+     * The Actor's dataset item shape (camelCase keys such as `activityId` and `travelerType`), so
+     * `Review::fromArray($r->toArray())` restores an equal review. Nullable fields stay in the array as `null`.
+     *
+     * @return array<string, mixed>
+     */
+    public function toArray(): array
+    {
+        return [
+            'id' => $this->id,
+            'activityId' => $this->activityId,
+            'rating' => $this->rating,
+            'title' => $this->title,
+            'message' => $this->message,
+            'author' => $this->author,
+            'created' => $this->created,
+            'language' => $this->language,
+            'travelerType' => $this->travelerType,
+            'isAnonymous' => $this->isAnonymous,
+            'ratings' => $this->ratings,
+            'media' => $this->media,
+            'replies' => $this->replies,
+            'optionId' => $this->optionId,
+            'isPartnerReview' => $this->isPartnerReview,
+            'enjoyment' => $this->enjoyment,
+            'hasUpvoted' => $this->hasUpvoted,
+            'isTestData' => $this->isTestData,
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    public function jsonSerialize(): array
+    {
+        return $this->toArray();
     }
 
     public function getAuthorName(): ?string

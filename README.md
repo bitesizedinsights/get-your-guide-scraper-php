@@ -133,6 +133,13 @@ An out-of-range `activityId` or `limit` throws `InvalidArgumentException` before
 
 **Review DTO fields:** besides the core fields, `enjoyment` (`?string`, often empty), `hasUpvoted` (`bool`) and `isTestData` (`?bool`, usually null). `Activity::$reviewsAiSummary` (`?array`) holds the AI review summary when `withReviews` is enabled. `Activity::$enrichmentErrors` (`list<string>`, empty by default) lists the add-ons (`images`, `details`, `reviews`, `reviewsAiSummary`, `availabilities`) that could not be delivered for that activity, so an empty `details` array can be told apart from a failed fetch; `$activity->hasEnrichmentError('details')` checks one kind and the Actor does not charge for add-ons listed there.
 
+**Serialization:** `Activity` and `Review` implement `JsonSerializable` and have `toArray()`. The array uses the Actor's dataset field names (camelCase, for example `reviewsAiSummary`, `enrichmentErrors`, `activityId`, `travelerType`), nullable fields stay as `null`, and `fromArray()` restores an equal object:
+
+```php
+$json = json_encode($activity);                       // store in a database, cache or queue
+$again = Activity::fromArray(json_decode($json, true));
+```
+
 **Review DTO helpers:**
 
 ```php

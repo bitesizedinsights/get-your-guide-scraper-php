@@ -5,8 +5,9 @@ declare(strict_types=1);
 namespace GYGScraper\DTO;
 
 use InvalidArgumentException;
+use JsonSerializable;
 
-final readonly class Activity
+final readonly class Activity implements JsonSerializable
 {
     /**
      * @param  array<string, mixed>|null  $price
@@ -61,6 +62,40 @@ final readonly class Activity
             reviewsAiSummary: $data['reviewsAiSummary'] ?? null,
             enrichmentErrors: array_values(array_filter($data['enrichmentErrors'] ?? [], is_string(...))),
         );
+    }
+
+    /**
+     * The Actor's dataset item shape (camelCase keys such as `reviewsAiSummary` and `enrichmentErrors`), so
+     * `Activity::fromArray($a->toArray())` restores an equal activity. Use it, or `json_encode($activity)`, to store
+     * activities in a database, cache or queue. Nullable fields stay in the array as `null`.
+     *
+     * @return array<string, mixed>
+     */
+    public function toArray(): array
+    {
+        return [
+            'id' => $this->id,
+            'title' => $this->title,
+            'url' => $this->url,
+            'image' => $this->image,
+            'price' => $this->price,
+            'rating' => $this->rating,
+            'duration' => $this->duration,
+            'location' => $this->location,
+            'badges' => $this->badges,
+            'images' => $this->images,
+            'reviews' => $this->reviews,
+            'details' => $this->details,
+            'availabilities' => $this->availabilities,
+            'reviewsAiSummary' => $this->reviewsAiSummary,
+            'enrichmentErrors' => $this->enrichmentErrors,
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    public function jsonSerialize(): array
+    {
+        return $this->toArray();
     }
 
     /**

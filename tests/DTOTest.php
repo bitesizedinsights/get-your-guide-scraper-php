@@ -135,3 +135,77 @@ it('ignores malformed enrichmentErrors entries', function () {
     expect(Activity::fromArray(['id' => 1, 'enrichmentErrors' => ['details', 5, null]])->enrichmentErrors)
         ->toBe(['details']);
 });
+
+it('serializes an activity to the Actor field names and restores it with fromArray', function () {
+    $activity = Activity::fromArray([
+        'id' => 505196,
+        'title' => 'Bangkok Temple Tour',
+        'url' => 'https://www.getyourguide.com/bangkok-l169/temple-tour-t505196/',
+        'price' => ['amount' => 29.99, 'display' => '$29.99'],
+        'rating' => ['value' => 4.7, 'count' => 1250],
+        'images' => [['id' => '1', 'url' => 'u', 'urls' => ['full' => 'f', 'thumbnail' => 't']]],
+        'reviews' => [['id' => 1, 'message' => 'Great']],
+        'reviewsAiSummary' => ['summary' => 'Nice'],
+        'enrichmentErrors' => ['details'],
+    ]);
+
+    $array = $activity->toArray();
+
+    expect($array)->toHaveKeys(['id', 'title', 'reviewsAiSummary', 'enrichmentErrors', 'availabilities'])
+        ->and($array['id'])->toBe(505196)
+        ->and($array['image'])->toBeNull()
+        ->and($array['details'])->toBeNull()
+        ->and($array['reviews'][0]['message'])->toBe('Great')
+        ->and($array['enrichmentErrors'])->toBe(['details'])
+        ->and(Activity::fromArray($array))->toEqual($activity)
+        ->and(json_decode(json_encode($activity), true))->toBe($array);
+});
+
+it('serializes a minimal activity with empty lists and nulls', function () {
+    $activity = Activity::fromArray(['id' => 1]);
+    $decoded = json_decode(json_encode($activity), true);
+
+    expect($decoded['images'])->toBe([])
+        ->and($decoded['enrichmentErrors'])->toBe([])
+        ->and($decoded['price'])->toBeNull()
+        ->and(Activity::fromArray($decoded))->toEqual($activity);
+});
+
+it('serializes a review to the Actor field names and restores it with fromArray', function () {
+    $review = Review::fromArray([
+        'id' => 7,
+        'activityId' => 505196,
+        'rating' => 4.5,
+        'title' => 'Fun',
+        'message' => 'Loved it',
+        'author' => ['fullName' => 'Ann', 'country' => 'DE'],
+        'created' => '2026-01-02T03:04:05+00:00',
+        'travelerType' => 'couple',
+        'isAnonymous' => true,
+        'media' => [['url' => 'x']],
+        'optionId' => 9,
+        'hasUpvoted' => true,
+        'isTestData' => false,
+    ]);
+
+    $array = $review->toArray();
+
+    expect($array['activityId'])->toBe(505196)
+        ->and($array['travelerType'])->toBe('couple')
+        ->and($array['isAnonymous'])->toBeTrue()
+        ->and($array['isTestData'])->toBeFalse()
+        ->and($array['language'])->toBeNull()
+        ->and(Review::fromArray($array))->toEqual($review)
+        ->and(json_decode(json_encode($review), true))->toBe($array);
+});
+
+it('serializes nulls of a minimal review', function () {
+    $review = Review::fromArray(['id' => 3]);
+    $decoded = json_decode(json_encode($review), true);
+
+    expect($decoded['rating'])->toBeNull()
+        ->and($decoded['optionId'])->toBeNull()
+        ->and($decoded['isTestData'])->toBeNull()
+        ->and($decoded['ratings'])->toBe([])
+        ->and(Review::fromArray($decoded))->toEqual($review);
+});

@@ -166,7 +166,7 @@ $client = (new Client(new Config(timeout: 600)))->setApifyKey($apiToken);
 
 The API key is set with `setApifyKey()`. If you skip it, the client reads `APIFY_API_TOKEN` or `APIFY_TOKEN` from the environment and throws `MissingApiKeyException` on the first API call when neither is set. A custom Guzzle client can be passed as second constructor argument.
 
-`timeout` is the overall time in seconds the client waits for a run to finish. The Apify API caps each `waitForFinish` call at 60 seconds, so the client polls the run in waits of at most 60 seconds until it is finished or the timeout is reached (then an `ApiException` is thrown).
+`timeout` is the overall time in seconds the client waits for a run to finish. The Apify API caps each `waitForFinish` call at 60 seconds, so the client polls the run in waits of at most 60 seconds until it is finished or the timeout is reached. When the timeout expires, the client aborts the run (best effort, `POST /actor-runs/{id}/abort` with its own 10 second timeout) so it does not keep running and billing, and throws an `ApiException` (`Actor run did not finish within N seconds and was aborted`, without `and was aborted` if the abort call itself failed) with the run ID in `$e->runId`. Runs that end as `FAILED`, `TIMED-OUT` or `ABORTED`, and errors while polling, do not trigger an abort. You can also stop a run yourself with `$client->abort($runId)`.
 
 ## Free Plan Limits
 

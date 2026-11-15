@@ -156,6 +156,85 @@ test('throws when the overall timeout is reached while the run is still in progr
         ->and($history)->toHaveCount(1);
 });
 
+/**
+ * @param  list<Response|Throwable>  $responses
+ * @param  array<int, array<string, mixed>>  $history
+ */
+function timeoutClient(array $responses, array &$history): Client
+{
+    $stack = HandlerStack::create(new MockHandler($responses));
+    $stack->push(Middleware::history($history));
+
+    return (new Client(new Config(timeout: 0), new HttpClient(['handler' => $stack])))->setApifyKey('k');
+}
+
+test('aborts the run once when the overall timeout expires', function () {
+    $history = [];
+    $client = timeoutClient([runResponse('RUNNING', 201), new Response(200, [], '{}')], $history);
+
+    try {
+        $client->scrapeActivities(city: 'Rome');
+        $this->fail('expected ApiException');
+    } catch (ApiException $e) {
+        expect($e->getMessage())->toBe('Actor run did not finish within 0 seconds and was aborted')
+            ->and($e->runId)->toBe('run1');
+    }
+
+    $request = $history[1]['request'];
+    expect($history)->toHaveCount(2)
+        ->and($request->getMethod())->toBe('POST')
+        ->and($request->getUri()->getPath())->toEndWith('/actor-runs/run1/abort')
+        ->and($request->getHeaderLine('Authorization'))->toBe('Bearer k')
+        ->and($history[1]['options']['timeout'])->toBe(10);
+});
+
+test('a failing abort still yields the original timeout exception without the aborted wording', function () {
+    $history = [];
+    $client = timeoutClient([
+        runResponse('RUNNING', 201),
+        new ConnectException('boom', new Request('POST', 'x')),
+    ], $history);
+
+    try {
+        $client->scrapeActivities(city: 'Rome');
+        $this->fail('expected ApiException');
+    } catch (ApiException $e) {
+        expect($e->getMessage())->toBe('Actor run did not finish within 0 seconds')
+            ->and($e->runId)->toBe('run1');
+    }
+
+    expect($history)->toHaveCount(2);
+});
+
+test('does not abort on success or failed runs', function () {
+    $history = [];
+    makeClient([runResponse('SUCCEEDED', 201), new Response(200, [], '[]')], $history)
+        ->scrapeActivities(city: 'Rome');
+    expect($history)->toHaveCount(2);
+
+    foreach (['FAILED', 'ABORTED', 'TIMED-OUT'] as $status) {
+        $history = [];
+        $client = makeClient([runResponse($status, 201)], $history);
+        expect(fn () => $client->scrapeActivities(city: 'Rome'))->toThrow(ApiException::class)
+            ->and($history)->toHaveCount(1);
+    }
+});
+
+test('public abort posts to the abort endpoint', function () {
+    $history = [];
+    makeClient([new Response(200, [], '{}')], $history)->abort('run9');
+
+    expect($history)->toHaveCount(1)
+        ->and($history[0]['request']->getMethod())->toBe('POST')
+        ->and($history[0]['request']->getUri()->getPath())->toEndWith('/actor-runs/run9/abort');
+});
+
+test('public abort maps HTTP errors', function () {
+    $client = makeClient([new Response(500, [], '{}')]);
+
+    expect(fn () => $client->abort('run9'))->toThrow(ApiException::class);
+});
+
 function sentInput(array $history): array
 {
     return json_decode((string) $history[0]['request']->getBody(), true, flags: JSON_THROW_ON_ERROR);

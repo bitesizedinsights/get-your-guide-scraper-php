@@ -20,6 +20,9 @@ final class Client
     /** Maximum waitForFinish value accepted by the Apify API. */
     private const MAX_WAIT_SECONDS = 60;
 
+    /** Own, short timeout for the abort call (the overall timeout has already expired by then). */
+    private const ABORT_TIMEOUT_SECONDS = 10;
+
     /** Run statuses that mean the run is still in progress. */
     private const RUNNING_STATUSES = ['READY', 'RUNNING', 'TIMING-OUT', 'ABORTING'];
 
@@ -143,6 +146,41 @@ final class Client
     }
 
     /**
+     * Abort a run (POST /actor-runs/{id}/abort). Use it to stop a run you no longer need, so it does not keep
+     * running and billing. The client calls this itself when `Config::$timeout` expires while waiting for a run.
+     *
+     * @throws ApiException
+     * @throws RateLimitException
+     * @throws MissingApiKeyException
+     */
+    public function abort(string $runId): void
+    {
+        try {
+            $this->http->request(
+                'POST',
+                $this->url('/actor-runs/'.rawurlencode($runId).'/abort'),
+                $this->options(['timeout' => self::ABORT_TIMEOUT_SECONDS])
+            );
+        } catch (GuzzleException $e) {
+            $this->handleGuzzleException($e);
+        }
+    }
+
+    /**
+     * Best-effort abort used on deadline expiry: never throws, returns whether the abort call succeeded.
+     */
+    private function tryAbort(string $runId): bool
+    {
+        try {
+            $this->abort($runId);
+
+            return true;
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    /**
      * @template T
      *
      * @param  array<string, mixed>  $input
@@ -226,11 +264,17 @@ final class Client
 
             $remaining = $deadline - time();
 
-            if ($remaining <= 0) {
-                throw new ApiException("Actor run did not finish within {$this->config->timeout} seconds");
-            }
-
             $runId = $result['data']['id'] ?? null;
+
+            if ($remaining <= 0) {
+                $message = "Actor run did not finish within {$this->config->timeout} seconds";
+
+                if (is_string($runId) && $this->tryAbort($runId)) {
+                    $message .= ' and was aborted';
+                }
+
+                throw new ApiException($message, 0, null, is_string($runId) ? $runId : null);
+            }
 
             if (! is_string($runId)) {
                 throw new ApiException('Invalid API response: missing run ID');
@@ -289,7 +333,7 @@ final class Client
             'Authorization' => 'Bearer '.$this->resolveApiKey(),
             'Accept' => 'application/json',
         ];
-        $options['timeout'] = $this->config->timeout;
+        $options['timeout'] ??= $this->config->timeout;
 
         return $options;
     }

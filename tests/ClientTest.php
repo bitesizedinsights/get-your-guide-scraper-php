@@ -3,14 +3,17 @@
 declare(strict_types=1);
 
 use GuzzleHttp\Client as HttpClient;
+use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Middleware;
+use GuzzleHttp\Psr7\Request;
 use GuzzleHttp\Psr7\Response;
 use GYGScraper\Client;
 use GYGScraper\Config;
 use GYGScraper\Exception\ApiException;
 use GYGScraper\Exception\MissingApiKeyException;
+use GYGScraper\Exception\RateLimitException;
 use GYGScraper\ReviewSort;
 
 /**
@@ -207,3 +210,22 @@ test('non-successful terminal runs throw without requesting the dataset', functi
         ->toThrow(ApiException::class, "Actor run ended with status {$status}: boom");
     expect($history)->toHaveCount(1);
 })->with(['FAILED', 'TIMED-OUT', 'ABORTED']);
+
+test('HTTP 429 maps to RateLimitException with Retry-After (Guzzle 7 and 8)', function () {
+    $client = makeClient([new Response(429, ['Retry-After' => '17'])]);
+
+    try {
+        $client->scrapeReviews(activityId: 1);
+        $this->fail('RateLimitException expected');
+    } catch (RateLimitException $e) {
+        expect($e->getMessage())->toBe('Rate limit exceeded')->and($e->retryAfter)->toBe(17);
+    }
+});
+
+test('HTTP errors and connection failures map to ApiException (Guzzle 7 and 8)', function () {
+    $client = makeClient([new Response(500, [], 'oops')]);
+    expect(fn () => $client->scrapeReviews(activityId: 1))->toThrow(ApiException::class, 'API request failed');
+
+    $client = makeClient([new ConnectException('no route', new Request('POST', 'https://api.apify.com'))]);
+    expect(fn () => $client->scrapeReviews(activityId: 1))->toThrow(ApiException::class, 'API request failed');
+});

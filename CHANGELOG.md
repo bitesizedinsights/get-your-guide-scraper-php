@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file. The format is b
 
 ## [Unreleased]
 
+### Changed
+
+- Guzzle 8 supported, Guzzle 7 still allowed (`guzzlehttp/guzzle` `^7.0 || ^8.0`); tests cover the error mapping on both majors.
+
 ### Added
 
 - `Activity::$enrichmentErrors` (`list<string>`, empty by default) and `Activity::hasEnrichmentError(?string $kind)`: the add-ons (`images`, `details`, `reviews`, `reviewsAiSummary`, `availabilities`) the Actor could not deliver for an activity; those are not charged.

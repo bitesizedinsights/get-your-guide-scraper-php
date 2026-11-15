@@ -190,6 +190,7 @@ If the Actor run ends with any status other than `SUCCEEDED` (`FAILED`, `TIMED-O
 ## Requirements
 
 - PHP 8.3+
+- Guzzle 7 or 8 (`guzzlehttp/guzzle` `^7.0 || ^8.0`, installed automatically)
 - [Apify API token](https://console.apify.com/account/integrations)
 
 ## License

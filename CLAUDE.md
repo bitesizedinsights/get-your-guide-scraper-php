@@ -52,7 +52,7 @@ tests/
 ## Key Design Decisions
 
 - The API key is set via fluent `setApifyKey()`, never via constructor or `Config`; without it `APIFY_API_TOKEN` or `APIFY_TOKEN` is read from the environment and `MissingApiKeyException` is thrown on the first API call if both are empty.
-- The Guzzle client is injectable (second constructor argument) so tests use `MockHandler`.
+- The Guzzle client is injectable (second constructor argument) so tests use `MockHandler`. Guzzle 7 and 8 are both supported (`^7.0 || ^8.0`); keep the code running on both.
 - DTOs are immutable (readonly properties)
 - All DTOs use named constructors (`fromArray()`) for Apify JSON mapping
 - Nullable types for optional fields from the API

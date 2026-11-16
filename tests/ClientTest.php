@@ -290,6 +290,53 @@ test('non-successful terminal runs throw without requesting the dataset', functi
     expect($history)->toHaveCount(1);
 })->with(['FAILED', 'TIMED-OUT', 'ABORTED']);
 
+function failedRunException(mixed $statusMessage): ApiException
+{
+    $data = ['id' => 'run1', 'status' => 'FAILED', 'defaultDatasetId' => 'ds1'];
+
+    if ($statusMessage !== null) {
+        $data['statusMessage'] = $statusMessage;
+    }
+
+    try {
+        makeClient([new Response(201, [], json_encode(['data' => $data], JSON_THROW_ON_ERROR))])
+            ->scrapeReviews(activityId: 1);
+    } catch (ApiException $e) {
+        return $e;
+    }
+
+    throw new RuntimeException('ApiException expected');
+}
+
+test('failed run exposes statusMessage and runId on the exception', function () {
+    $e = failedRunException('boom');
+
+    expect($e->statusMessage)->toBe('boom')
+        ->and($e->runId)->toBe('run1')
+        ->and($e->getMessage())->toBe('Actor run ended with status FAILED: boom');
+});
+
+test('failed run message is capped at 500 characters, property at 2000', function () {
+    $e = failedRunException(str_repeat('a', 3000));
+
+    expect($e->getMessage())->toBe('Actor run ended with status FAILED: '.str_repeat('a', 500))
+        ->and($e->statusMessage)->toBe(str_repeat('a', 2000));
+});
+
+test('failed run message strips control characters', function () {
+    $e = failedRunException("bad\x00\x1B[31m line\nnext\x7F");
+
+    expect($e->getMessage())->not->toMatch('/[\x00-\x1F\x7F]/')
+        ->and($e->getMessage())->toContain('bad')->and($e->getMessage())->toContain('next');
+});
+
+test('empty or non-string statusMessage is ignored', function (mixed $value) {
+    $e = failedRunException($value);
+
+    expect($e->statusMessage)->toBeNull()
+        ->and($e->getMessage())->toBe('Actor run ended with status FAILED');
+})->with(['', 123, [['x']], null]);
+
 test('HTTP 429 maps to RateLimitException with Retry-After (Guzzle 7 and 8)', function () {
     $client = makeClient([new Response(429, ['Retry-After' => '17'])]);
 

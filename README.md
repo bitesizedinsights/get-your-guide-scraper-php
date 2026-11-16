@@ -210,7 +210,17 @@ try {
 }
 ```
 
-If the Actor run ends with any status other than `SUCCEEDED` (`FAILED`, `TIMED-OUT`, `ABORTED`), an `ApiException` is thrown with the status and the run's status message, e.g. `Actor run ended with status TIMED-OUT: <statusMessage>`. The dataset is not fetched in that case. A run response without a status field is treated as successful.
+If the Actor run ends with any status other than `SUCCEEDED` (`FAILED`, `TIMED-OUT`, `ABORTED`), an `ApiException` is thrown with the status and the run's status message, e.g. `Actor run ended with status TIMED-OUT: <statusMessage>`. The dataset is not fetched in that case. The raw status message (capped at 2000 characters) is available as `$e->statusMessage` (`null` when the run has none) and the Apify run ID as `$e->runId`; the text appended to the exception message has control characters stripped and is capped at 500 characters.
+
+```php
+try {
+    $client->scrapeActivities(city: 'Rome');
+} catch (ApiException $e) {
+    error_log("Run {$e->runId} failed: {$e->statusMessage}");
+}
+```
+
+A run response without a status field is treated as successful.
 
 ## Requirements
 

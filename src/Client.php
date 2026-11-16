@@ -257,9 +257,22 @@ final class Client
         }
 
         $message = $result['data']['statusMessage'] ?? null;
+        $runId = $result['data']['id'] ?? null;
+        $text = '';
+        $raw = null;
+
+        if (is_string($message) && $message !== '') {
+            $raw = mb_substr($message, 0, 2000);
+            $clean = trim((string) preg_replace('/[\x00-\x1F\x7F]+/u', ' ', $raw));
+            $text = $clean === '' ? '' : ': '.mb_substr($clean, 0, 500);
+        }
 
         throw new ApiException(
-            "Actor run ended with status {$status}".(is_string($message) && $message !== '' ? ": {$message}" : '')
+            "Actor run ended with status {$status}{$text}",
+            0,
+            null,
+            is_string($runId) ? $runId : null,
+            $raw,
         );
     }
 

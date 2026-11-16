@@ -310,7 +310,17 @@ final class Client
             /** @var array<int, array<string, mixed>> $items */
             $items = json_decode($response->getBody()->getContents(), true);
 
-            return array_map($mapper, $items);
+            $mapped = [];
+
+            foreach ($items as $index => $item) {
+                try {
+                    $mapped[] = $mapper($item);
+                } catch (InvalidArgumentException $e) {
+                    throw new ApiException("Invalid dataset item #{$index}: ".$e->getMessage(), 0, $e);
+                }
+            }
+
+            return $mapped;
         } catch (GuzzleException $e) {
             throw new ApiException('Failed to fetch dataset: '.$e->getMessage(), 0, $e);
         }

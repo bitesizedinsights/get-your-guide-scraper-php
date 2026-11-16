@@ -73,10 +73,10 @@ test('review from array with all fields', function () {
 });
 
 test('review from array with minimal fields', function () {
-    $review = Review::fromArray(['id' => 1]);
+    $review = Review::fromArray(['id' => 1, 'activityId' => 7]);
 
     expect($review->id)->toBe(1)
-        ->and($review->activityId)->toBe(0)
+        ->and($review->activityId)->toBe(7)
         ->and($review->rating)->toBeNull()
         ->and($review->getAuthorName())->toBeNull()
         ->and($review->hasMedia())->toBeFalse()
@@ -93,11 +93,12 @@ test('activity parses reviews AI summary', function () {
 test('review parses enjoyment, hasUpvoted and isTestData', function () {
     $review = Review::fromArray([
         'id' => 1,
+        'activityId' => 1,
         'enjoyment' => 'loved it',
         'hasUpvoted' => true,
         'isTestData' => false,
     ]);
-    $minimal = Review::fromArray(['id' => 2, 'enjoyment' => null, 'isTestData' => null]);
+    $minimal = Review::fromArray(['id' => 2, 'activityId' => 1, 'enjoyment' => null, 'isTestData' => null]);
 
     expect($review->enjoyment)->toBe('loved it')
         ->and($review->hasUpvoted)->toBeTrue()
@@ -200,7 +201,7 @@ it('serializes a review to the Actor field names and restores it with fromArray'
 });
 
 it('serializes nulls of a minimal review', function () {
-    $review = Review::fromArray(['id' => 3]);
+    $review = Review::fromArray(['id' => 3, 'activityId' => 1]);
     $decoded = json_decode(json_encode($review), true);
 
     expect($decoded['rating'])->toBeNull()
@@ -208,4 +209,28 @@ it('serializes nulls of a minimal review', function () {
         ->and($decoded['isTestData'])->toBeNull()
         ->and($decoded['ratings'])->toBe([])
         ->and(Review::fromArray($decoded))->toEqual($review);
+});
+
+test('review requires an integer id', function (array $data) {
+    expect(fn () => Review::fromArray($data))
+        ->toThrow(InvalidArgumentException::class, 'Review id is required and must be an integer');
+})->with([
+    'missing' => [['activityId' => 1]],
+    'null' => [['id' => null, 'activityId' => 1]],
+    'string' => [['id' => '5', 'activityId' => 1]],
+]);
+
+test('review requires an integer activityId', function (array $data) {
+    expect(fn () => Review::fromArray($data))
+        ->toThrow(InvalidArgumentException::class, 'Review activityId is required and must be an integer');
+})->with([
+    'missing' => [['id' => 1]],
+    'null' => [['id' => 1, 'activityId' => null]],
+    'string' => [['id' => 1, 'activityId' => '9']],
+]);
+
+test('review accepts integer id and activityId', function () {
+    $review = Review::fromArray(['id' => 12, 'activityId' => 34]);
+
+    expect($review->id)->toBe(12)->and($review->activityId)->toBe(34);
 });

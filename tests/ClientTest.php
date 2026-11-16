@@ -442,3 +442,14 @@ test('dates must be valid YYYY-MM-DD, not in the past and ordered', function () 
     );
     expect($history)->toHaveCount(4);
 });
+
+test('an invalid review item is wrapped in ApiException with its index', function () {
+    $items = [['id' => 1, 'activityId' => 2], ['id' => null, 'activityId' => 2]];
+    $client = makeClient([
+        new Response(201, [], json_encode(['data' => ['defaultDatasetId' => 'ds1']], JSON_THROW_ON_ERROR)),
+        new Response(200, [], json_encode($items, JSON_THROW_ON_ERROR)),
+    ]);
+
+    expect(fn () => $client->scrapeReviews(activityId: 2))
+        ->toThrow(ApiException::class, 'Invalid dataset item #1: Review id is required and must be an integer');
+});

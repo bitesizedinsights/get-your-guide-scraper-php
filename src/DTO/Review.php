@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace GYGScraper\DTO;
 
+use InvalidArgumentException;
 use JsonSerializable;
 
 final readonly class Review implements JsonSerializable
@@ -37,12 +38,14 @@ final readonly class Review implements JsonSerializable
 
     /**
      * @param  array<string, mixed>  $data
+     *
+     * @throws InvalidArgumentException when `id` or `activityId` is missing, null or not an integer
      */
     public static function fromArray(array $data): self
     {
         return new self(
-            id: (int) $data['id'],
-            activityId: (int) ($data['activityId'] ?? 0),
+            id: self::requireInt($data, 'id'),
+            activityId: self::requireInt($data, 'activityId'),
             rating: isset($data['rating']) ? (float) $data['rating'] : null,
             title: $data['title'] ?? null,
             message: $data['message'] ?? null,
@@ -60,6 +63,22 @@ final readonly class Review implements JsonSerializable
             hasUpvoted: (bool) ($data['hasUpvoted'] ?? false),
             isTestData: isset($data['isTestData']) ? (bool) $data['isTestData'] : null,
         );
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     *
+     * @throws InvalidArgumentException when the value is missing, null or not an integer
+     */
+    private static function requireInt(array $data, string $key): int
+    {
+        $value = $data[$key] ?? null;
+
+        if (! is_int($value)) {
+            throw new InvalidArgumentException("Review {$key} is required and must be an integer");
+        }
+
+        return $value;
     }
 
     /**

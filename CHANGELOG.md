@@ -9,6 +9,10 @@ All notable changes to this project are documented in this file. The format is b
 - `toArray()` and `JsonSerializable` on `Activity` and `Review`, in the Actor's camelCase dataset field names, so results can be stored and restored with `fromArray()`.
 - When `Config::$timeout` expires while waiting for a run, the client aborts the run (best effort, own 10 second timeout, abort errors swallowed) and throws an `ApiException` saying the run was aborted (only if the abort succeeded). `ApiException::$runId` carries the run ID. New public `Client::abort(string $runId)`.
 
+### Fixed
+
+- `Review::fromArray()` requires `id` and `activityId` as integers and throws `InvalidArgumentException` when one is missing, null or not an integer, instead of silently casting to 0. The client wraps such an item error (reviews and activities) in an `ApiException` naming the item index.
+
 ## [0.1.0] - 2026-11-15
 
 First release.

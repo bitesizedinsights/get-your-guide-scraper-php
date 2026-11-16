@@ -191,7 +191,34 @@ $activities = $client->scrapeActivities(city: 'Rome', runTimeout: 300); // this 
 $reviews = $client->scrapeReviews(activityId: 505196, runTimeout: 0);   // keep the Actor default
 ```
 
-## Free Plan Limits
+## Pricing and limits
+
+Both Actors use pay-per-event billing: you pay per result, not per run time. Current prices per event (they depend on your Apify plan) are on the Store pages of the [GetYourGuide Scraper](https://apify.com/bite-sized-insights/get-your-guide-scraper) and the [GetYourGuide Reviews Scraper](https://apify.com/bite-sized-insights/get-your-guide-reviews-scraper); this README does not list prices.
+
+- `scrapeActivities()`: one event per activity returned, plus a flat Actor start event per run. Each requested add-on (`withImages`, `withDetails`, `withAvailabilities`) adds one event per activity that has it, and `withReviews` adds one event per individual review (up to `limitReviews` per activity), not per activity. Add-ons listed in `Activity::$enrichmentErrors` are not charged.
+- `scrapeReviews()`: one event per review returned, plus the Actor start event.
+
+### Pagination
+
+The Actor returns 24 activities per page. `page` (1-1000, default 1) selects the page, so to go beyond the first 24 activities request the following pages one by one (each call is a separate run and is billed like any other):
+
+```php
+$all = [];
+
+for ($page = 1; $page <= 3; $page++) {
+    $all = [...$all, ...$client->scrapeActivities(city: 'Barcelona', limit: 24, page: $page)];
+}
+```
+
+### Large review counts
+
+Reviews are billed per review, so `withReviews` on many activities gets expensive quickly. For large review counts use `scrapeReviews()` (the separate Reviews Scraper Actor) with the activity IDs from `scrapeActivities()` instead; it is the Actor's recommended route for bulk review extraction.
+
+```php
+$reviews = $client->scrapeReviews(activityId: $activity->id, limit: 1000);
+```
+
+### Free plan
 
 Free-plan users get 5 runs in total, and each run returns at most 10 results: `scrapeActivities()` returns at most 10 activities (and 10 reviews per activity when `withReviews` is enabled), `scrapeReviews()` returns at most 10 reviews. Larger `limit` and `limitReviews` values are capped to 10. Test runs started from the Apify Console have the same cap.
 

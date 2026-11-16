@@ -453,3 +453,98 @@ test('an invalid review item is wrapped in ApiException with its index', functio
     expect(fn () => $client->scrapeReviews(activityId: 2))
         ->toThrow(ApiException::class, 'Invalid dataset item #1: Review id is required and must be an integer');
 });
+
+/**
+ * @param  list<Response>  $responses
+ * @param  array<int, array<string, mixed>>  $history
+ */
+function configuredClient(Config $config, array $responses, array &$history): Client
+{
+    $stack = HandlerStack::create(new MockHandler($responses));
+    $stack->push(Middleware::history($history));
+
+    return (new Client($config, new HttpClient(['handler' => $stack])))->setApifyKey('k');
+}
+
+/**
+ * @param  array<int, array<string, mixed>>  $history
+ * @return array<string, string>
+ */
+function queryOf(array $history, int $index): array
+{
+    parse_str($history[$index]['request']->getUri()->getQuery(), $query);
+
+    return $query;
+}
+
+test('the run timeout defaults to the client timeout and is sent on the run start only', function () {
+    $history = [];
+    configuredClient(new Config(timeout: 120), successfulRun(), $history)->scrapeActivities(city: 'Rome');
+
+    expect(queryOf($history, 0)['timeout'])->toBe('120')
+        ->and(queryOf($history, 1))->not->toHaveKey('timeout');
+
+    $history = [];
+    configuredClient(new Config(timeout: 120), successfulRun(), $history)->scrapeReviews(activityId: 1);
+
+    expect(queryOf($history, 0)['timeout'])->toBe('120');
+});
+
+test('an explicit Config run timeout wins over the client timeout', function () {
+    $history = [];
+    configuredClient(new Config(timeout: 120, runTimeout: 900), successfulRun(), $history)
+        ->scrapeActivities(city: 'Rome');
+
+    expect(queryOf($history, 0)['timeout'])->toBe('900');
+});
+
+test('a per-call run timeout wins over Config for activities and reviews', function () {
+    $config = new Config(timeout: 120, runTimeout: 900);
+
+    $history = [];
+    configuredClient($config, successfulRun(), $history)->scrapeActivities(city: 'Rome', runTimeout: 60);
+    expect(queryOf($history, 0)['timeout'])->toBe('60');
+
+    $history = [];
+    configuredClient($config, successfulRun(), $history)->scrapeReviews(activityId: 1, runTimeout: 45);
+    expect(queryOf($history, 0)['timeout'])->toBe('45');
+});
+
+test('a run timeout of 0 sends no timeout query', function () {
+    $history = [];
+    configuredClient(new Config(runTimeout: 0), successfulRun(), $history)->scrapeActivities(city: 'Rome');
+    expect(queryOf($history, 0))->not->toHaveKey('timeout');
+
+    $history = [];
+    configuredClient(new Config(timeout: 120), successfulRun(), $history)
+        ->scrapeReviews(activityId: 1, runTimeout: 0);
+    expect(queryOf($history, 0))->not->toHaveKey('timeout');
+
+    $history = [];
+    configuredClient(new Config(timeout: 0), successfulRun(), $history)->scrapeActivities(city: 'Rome');
+    expect(queryOf($history, 0))->not->toHaveKey('timeout');
+});
+
+test('a negative run timeout is rejected', function () {
+    expect(fn () => new Config(runTimeout: -1))->toThrow(InvalidArgumentException::class, 'runTimeout');
+
+    expectInvalid(fn (Client $c) => $c->scrapeActivities(city: 'Rome', runTimeout: -5), 'runTimeout');
+    expectInvalid(fn (Client $c) => $c->scrapeReviews(activityId: 1, runTimeout: -5), 'runTimeout');
+});
+
+test('the abort request carries no run timeout', function () {
+    $history = [];
+    $client = configuredClient(
+        new Config(timeout: 0, runTimeout: 100),
+        [runResponse('RUNNING', 201), new Response(200, [], '{}')],
+        $history,
+    );
+
+    try {
+        $client->scrapeActivities(city: 'Rome');
+    } catch (ApiException) {
+    }
+
+    expect(queryOf($history, 0)['timeout'])->toBe('100')
+        ->and(queryOf($history, 1))->not->toHaveKey('timeout');
+});

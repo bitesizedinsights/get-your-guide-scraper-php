@@ -54,6 +54,9 @@ final class Client
      * `withDetails` adds a compact `details` array (title, description, url, rating, review_count, price_from,
      * currency, itinerary); `withImages` adds `images` (id, 1200px url, urls.full, urls.thumbnail).
      *
+     *
+     * @param  int|null  $runTimeout  Apify run time limit in seconds for this call (0 = Actor default); null = the
+     *                                `Config::$runTimeout`, else `Config::$timeout`.
      * @return Activity[]
      *
      * @throws InvalidArgumentException when the input violates the Actor's rules (city or locationId missing,
@@ -79,7 +82,9 @@ final class Client
         ?float $maxPrice = null,
         ?int $page = null,
         ?string $timezone = null,
+        ?int $runTimeout = null,
     ): array {
+        InputValidator::runTimeout($runTimeout);
         InputValidator::activities(
             $city, $locationId, $limit, $limitReviews, $startDate, $endDate, $minPrice, $maxPrice, $page, $timezone,
         );
@@ -108,12 +113,16 @@ final class Client
             $this->config->activitiesActorId,
             $input,
             static fn (array $item): Activity => Activity::fromArray($item),
+            $runTimeout,
         );
     }
 
     /**
      * Scrape reviews for a specific activity.
      *
+     *
+     * @param  int|null  $runTimeout  Apify run time limit in seconds for this call (0 = Actor default); null = the
+     *                                `Config::$runTimeout`, else `Config::$timeout`.
      * @return Review[]
      *
      * @throws InvalidArgumentException when `activityId` is not 1-2147483647 or `limit` is not 0-10000
@@ -125,8 +134,10 @@ final class Client
         int $limit = 50,
         Locale $locale = Locale::EnUS,
         ?ReviewSort $sort = null,
+        ?int $runTimeout = null,
     ): array {
         InputValidator::reviews($activityId, $limit);
+        InputValidator::runTimeout($runTimeout);
 
         $input = [
             'activityId' => $activityId,
@@ -142,6 +153,7 @@ final class Client
             $this->config->reviewsActorId,
             $input,
             static fn (array $item): Review => Review::fromArray($item),
+            $runTimeout,
         );
     }
 
@@ -185,21 +197,29 @@ final class Client
      *
      * @param  array<string, mixed>  $input
      * @param  callable(array<string, mixed>): T  $mapper
+     * @param  int|null  $runTimeout  Per-call override of the run-start `timeout` query (0 = send nothing).
      * @return T[]
      *
      * @throws ApiException
      * @throws RateLimitException
      */
-    private function runActor(string $actorId, array $input, callable $mapper): array
+    private function runActor(string $actorId, array $input, callable $mapper, ?int $runTimeout = null): array
     {
         try {
             $deadline = time() + $this->config->timeout;
+            $query = ['waitForFinish' => max(0, min(self::MAX_WAIT_SECONDS, $this->config->timeout))];
+            $apifyTimeout = $runTimeout ?? $this->config->runTimeout ?? $this->config->timeout;
+
+            if ($apifyTimeout > 0) {
+                $query['timeout'] = $apifyTimeout;
+            }
+
             $response = $this->http->request(
                 'POST',
                 $this->url("/acts/{$actorId}/runs"),
                 $this->options([
                     'json' => $input,
-                    'query' => ['waitForFinish' => max(0, min(self::MAX_WAIT_SECONDS, $this->config->timeout))],
+                    'query' => $query,
                 ])
             );
 
@@ -295,11 +315,12 @@ final class Client
      * @template T
      *
      * @param  callable(array<string, mixed>): T  $mapper
+     * @param  int|null  $runTimeout  Per-call override of the run-start `timeout` query (0 = send nothing).
      * @return T[]
      *
      * @throws ApiException
      */
-    private function fetchDataset(string $datasetId, callable $mapper): array
+    private function fetchDataset(string $datasetId, callable $mapper, ?int $runTimeout = null): array
     {
         try {
             $response = $this->http->request(

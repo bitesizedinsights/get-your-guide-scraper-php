@@ -175,6 +175,22 @@ The API key is set with `setApifyKey()`. If you skip it, the client reads `APIFY
 
 `timeout` is the overall time in seconds the client waits for a run to finish. The Apify API caps each `waitForFinish` call at 60 seconds, so the client polls the run in waits of at most 60 seconds until it is finished or the timeout is reached. When the timeout expires, the client aborts the run (best effort, `POST /actor-runs/{id}/abort` with its own 10 second timeout) so it does not keep running and billing, and throws an `ApiException` (`Actor run did not finish within N seconds and was aborted`, without `and was aborted` if the abort call itself failed) with the run ID in `$e->runId`. Runs that end as `FAILED`, `TIMED-OUT` or `ABORTED`, and errors while polling, do not trigger an abort. You can also stop a run yourself with `$client->abort($runId)`.
 
+### Run timeout
+
+Apify has its own time limit per run, separate from the client's wait. The client sends it as the `timeout` query (in seconds) of the run start request only, never when polling, aborting or reading the dataset. The Guzzle HTTP request timeout is a separate setting. Resolution order:
+
+1. `runTimeout` argument of `scrapeActivities()` / `scrapeReviews()` (last, optional parameter).
+2. `Config::$runTimeout`.
+3. `Config::$timeout`, so by default the platform stops a run once the client has given up and a run cannot outlive the client's wait.
+
+`0` at any level (or `Config::$timeout` of 0 with nothing else set) sends no `timeout`, so the Actor's own default limit applies. Negative values throw an `InvalidArgumentException`.
+
+```php
+$client = (new Client(new Config(timeout: 600, runTimeout: 900)))->setApifyKey($apiToken);
+$activities = $client->scrapeActivities(city: 'Rome', runTimeout: 300); // this call only
+$reviews = $client->scrapeReviews(activityId: 505196, runTimeout: 0);   // keep the Actor default
+```
+
 ## Free Plan Limits
 
 Free-plan users get 5 runs in total, and each run returns at most 10 results: `scrapeActivities()` returns at most 10 activities (and 10 reviews per activity when `withReviews` is enabled), `scrapeReviews()` returns at most 10 reviews. Larger `limit` and `limitReviews` values are capped to 10. Test runs started from the Apify Console have the same cap.

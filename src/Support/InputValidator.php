@@ -35,6 +35,18 @@ final class InputValidator
     /**
      * @throws InvalidArgumentException
      */
+    public static function runTimeout(?int $runTimeout): void
+    {
+        if ($runTimeout !== null && $runTimeout < 0) {
+            throw new InvalidArgumentException(
+                'runTimeout must be 0 (the Actor default) or a positive number of seconds',
+            );
+        }
+    }
+
+    /**
+     * @throws InvalidArgumentException
+     */
     public static function activities(
         ?string $city,
         ?int $locationId,

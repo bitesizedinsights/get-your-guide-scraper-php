@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use GuzzleHttp\Client as HttpClient;
 use GuzzleHttp\Exception\ConnectException;
+use GuzzleHttp\Exception\RequestException;
 use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Middleware;
@@ -18,15 +19,25 @@ use GYGScraper\Exception\SpendingLimitException;
 use GYGScraper\ReviewSort;
 
 /**
- * @param  list<Response>  $responses
+ * @param  list<Response|Throwable>  $responses
  * @param  array<int, array<string, mixed>>  $history
  */
-function makeClient(array $responses, array &$history = [], ?string $apiKey = 'test-token'): Client
-{
+function makeClient(
+    array $responses,
+    array &$history = [],
+    ?string $apiKey = 'test-token',
+    ?Config $config = null,
+    ?Closure $sleeper = null,
+): Client {
     $stack = HandlerStack::create(new MockHandler($responses));
     $stack->push(Middleware::history($history));
 
-    $client = new Client(http: new HttpClient(['handler' => $stack]));
+    // Retries are off by default and the sleeper never sleeps, so tests stay fast and deterministic.
+    $client = new Client(
+        $config ?? new Config(maxRetries: 0),
+        new HttpClient(['handler' => $stack]),
+        $sleeper ?? static function (float $seconds): void {},
+    );
 
     return $apiKey === null ? $client : $client->setApifyKey($apiKey);
 }
@@ -682,4 +693,211 @@ test('other statuses are unchanged by the 402 mapping', function () {
     $client = makeClient([new Response(403, [], limitBody())]);
 
     expect(fn () => $client->scrapeReviews(activityId: 1))->toThrow(ApiException::class, 'API request failed');
+});
+
+/**
+ * @param  list<float>  $sleeps
+ */
+function recordSleeps(array &$sleeps): Closure
+{
+    return static function (float $seconds) use (&$sleeps): void {
+        $sleeps[] = $seconds;
+    };
+}
+
+function connectFailure(string $method = 'POST'): ConnectException
+{
+    return new ConnectException('no route', new Request($method, 'https://api.apify.com'));
+}
+
+test('retries a 429 on run start and then succeeds', function () {
+    $history = [];
+    $sleeps = [];
+    $client = makeClient(
+        [new Response(429, ['Retry-After' => '2']), ...successfulRun()],
+        $history,
+        config: new Config,
+        sleeper: recordSleeps($sleeps),
+    );
+
+    expect($client->scrapeReviews(activityId: 1))->toBe([])
+        ->and($history)->toHaveCount(3)
+        ->and($sleeps)->toHaveCount(1)
+        ->and($sleeps[0])->toBeGreaterThanOrEqual(2.0);
+});
+
+test('retries a failed connection on run start', function () {
+    $history = [];
+    $sleeps = [];
+    $client = makeClient(
+        [connectFailure(), ...successfulRun()],
+        $history,
+        config: new Config,
+        sleeper: recordSleeps($sleeps),
+    );
+
+    expect($client->scrapeReviews(activityId: 1))->toBe([])
+        ->and($history)->toHaveCount(3)
+        ->and($sleeps)->toHaveCount(1);
+});
+
+test('retries 5xx and connection failures on the dataset GET', function () {
+    $history = [];
+    $sleeps = [];
+    $client = makeClient(
+        [
+            new Response(201, [], json_encode(['data' => ['defaultDatasetId' => 'ds1']], JSON_THROW_ON_ERROR)),
+            new Response(503),
+            connectFailure('GET'),
+            new Response(200, [], '[]'),
+        ],
+        $history,
+        config: new Config,
+        sleeper: recordSleeps($sleeps),
+    );
+
+    expect($client->scrapeReviews(activityId: 1))->toBe([])
+        ->and($history)->toHaveCount(4)
+        ->and($sleeps)->toHaveCount(2);
+});
+
+test('run start is not repeated after a 5xx', function () {
+    $history = [];
+    $sleeps = [];
+    $client = makeClient(
+        [new Response(500, [], 'oops'), ...successfulRun()],
+        $history,
+        config: new Config,
+        sleeper: recordSleeps($sleeps),
+    );
+
+    expect(fn () => $client->scrapeReviews(activityId: 1))->toThrow(ApiException::class, 'API request failed')
+        ->and($history)->toHaveCount(1)
+        ->and($sleeps)->toBeEmpty();
+});
+
+test('run start is not repeated after a timeout', function () {
+    $history = [];
+    $sleeps = [];
+    $timeout = new RequestException(
+        'cURL error 28: Operation timed out',
+        new Request('POST', 'https://api.apify.com'),
+    );
+    $client = makeClient(
+        [$timeout, ...successfulRun()],
+        $history,
+        config: new Config,
+        sleeper: recordSleeps($sleeps),
+    );
+
+    expect(fn () => $client->scrapeReviews(activityId: 1))->toThrow(ApiException::class, 'API request failed')
+        ->and($history)->toHaveCount(1)
+        ->and($sleeps)->toBeEmpty();
+});
+
+test('4xx statuses other than 429 are not retried', function (int $status) {
+    $history = [];
+    $sleeps = [];
+    $client = makeClient(
+        [new Response($status, [], 'no'), ...successfulRun()],
+        $history,
+        config: new Config,
+        sleeper: recordSleeps($sleeps),
+    );
+
+    expect(fn () => $client->scrapeReviews(activityId: 1))->toThrow(ApiException::class)
+        ->and($history)->toHaveCount(1)
+        ->and($sleeps)->toBeEmpty();
+})->with([400, 401, 402, 403, 404]);
+
+test('Retry-After in seconds and as HTTP date is honoured', function () {
+    $sleeps = [];
+    $date = gmdate('D, d M Y H:i:s', time() + 20).' GMT';
+    $client = makeClient(
+        [new Response(429, ['Retry-After' => '7']), new Response(429, ['Retry-After' => $date]), ...successfulRun()],
+        sleeper: recordSleeps($sleeps),
+        config: new Config,
+    );
+    $client->scrapeReviews(activityId: 1);
+
+    expect($sleeps)->toHaveCount(2)
+        ->and($sleeps[0])->toBeGreaterThanOrEqual(7.0)->toBeLessThanOrEqual(8.0)
+        ->and($sleeps[1])->toBeGreaterThanOrEqual(18.0)->toBeLessThanOrEqual(21.0);
+});
+
+test('backoff doubles, is capped by retryMaxDelay and carries 50 to 100 percent jitter', function () {
+    $sleeps = [];
+    $config = new Config(maxRetries: 3, retryBaseDelay: 4.0, retryMaxDelay: 6.0);
+    $client = makeClient(
+        [connectFailure(), connectFailure(), connectFailure(), connectFailure()],
+        sleeper: recordSleeps($sleeps),
+        config: $config,
+    );
+
+    expect(fn () => $client->scrapeReviews(activityId: 1))->toThrow(ApiException::class);
+    expect($sleeps)->toHaveCount(3)
+        ->and($sleeps[0])->toBeGreaterThanOrEqual(2.0)->toBeLessThanOrEqual(4.0)
+        ->and($sleeps[1])->toBeGreaterThanOrEqual(3.0)->toBeLessThanOrEqual(6.0)
+        ->and($sleeps[2])->toBeGreaterThanOrEqual(3.0)->toBeLessThanOrEqual(6.0);
+});
+
+test('exhausted retries on a 429 throw RateLimitException with the last Retry-After', function () {
+    $history = [];
+    $sleeps = [];
+    $client = makeClient(
+        [new Response(429, ['Retry-After' => '1']), new Response(429, ['Retry-After' => '1']),
+            new Response(429, ['Retry-After' => '9'])],
+        $history,
+        config: new Config(maxRetries: 2),
+        sleeper: recordSleeps($sleeps),
+    );
+
+    try {
+        $client->scrapeReviews(activityId: 1);
+        $this->fail('RateLimitException expected');
+    } catch (RateLimitException $e) {
+        expect($e->retryAfter)->toBe(9)->and($history)->toHaveCount(3)->and($sleeps)->toHaveCount(2);
+    }
+});
+
+test('exhausted retries on connection failures throw ApiException', function () {
+    $history = [];
+    $client = makeClient(
+        [connectFailure(), connectFailure(), connectFailure()],
+        $history,
+        config: new Config(maxRetries: 2),
+    );
+
+    expect(fn () => $client->scrapeReviews(activityId: 1))->toThrow(ApiException::class, 'API request failed')
+        ->and($history)->toHaveCount(3);
+});
+
+test('a Retry-After above retryMaxDelay is not waited out', function () {
+    $history = [];
+    $sleeps = [];
+    $client = makeClient(
+        [new Response(429, ['Retry-After' => '120']), ...successfulRun()],
+        $history,
+        config: new Config(retryMaxDelay: 30.0),
+        sleeper: recordSleeps($sleeps),
+    );
+
+    expect(fn () => $client->scrapeReviews(activityId: 1))->toThrow(RateLimitException::class)
+        ->and($history)->toHaveCount(1)
+        ->and($sleeps)->toBeEmpty();
+});
+
+test('maxRetries 0 turns retrying off', function () {
+    $history = [];
+    $client = makeClient([new Response(429), ...successfulRun()], $history, config: new Config(maxRetries: 0));
+
+    expect(fn () => $client->scrapeReviews(activityId: 1))->toThrow(RateLimitException::class)
+        ->and($history)->toHaveCount(1);
+});
+
+test('the default sleeper is used when none is injected and retrying is off', function () {
+    $stack = HandlerStack::create(new MockHandler(successfulRun()));
+    $client = (new Client(new Config(maxRetries: 0), new HttpClient(['handler' => $stack])))->setApifyKey('k');
+
+    expect($client->scrapeReviews(activityId: 1))->toBe([]);
 });

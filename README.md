@@ -173,6 +173,22 @@ $client = (new Client(new Config(timeout: 600)))->setApifyKey($apiToken);
 
 The API key is set with `setApifyKey()`. If you skip it, the client reads `APIFY_API_TOKEN` or `APIFY_TOKEN` from the environment and throws `MissingApiKeyException` on the first API call when neither is set. A custom Guzzle client can be passed as second constructor argument.
 
+### Retries
+
+Failed requests are repeated with exponential backoff, configured in `Config`:
+
+| Option | Default | Meaning |
+|---|---|---|
+| `maxRetries` | `3` | How often a failed request is repeated; `0` turns retrying off |
+| `retryBaseDelay` | `1.0` | Seconds before the first retry; doubles with each further retry, with 50 to 100 percent jitter |
+| `retryMaxDelay` | `30.0` | Longest wait before a retry; a `Retry-After` above this is not waited out |
+
+A third constructor argument takes a sleeper (`Closure(float): void`, seconds), so tests can run without waiting: `new Client($config, null, fn (float $s) => null)`.
+
+```php
+$client = (new Client(new Config(maxRetries: 5, retryBaseDelay: 2.0, retryMaxDelay: 60.0)))->setApifyKey($apiToken);
+```
+
 `timeout` is the overall time in seconds the client waits for a run to finish. The Apify API caps each `waitForFinish` call at 60 seconds, so the client polls the run in waits of at most 60 seconds until it is finished or the timeout is reached. When the timeout expires, the client aborts the run (best effort, `POST /actor-runs/{id}/abort` with its own 10 second timeout) so it does not keep running and billing, and throws an `ApiException` (`Actor run did not finish within N seconds and was aborted`, without `and was aborted` if the abort call itself failed) with the run ID in `$e->runId`. Runs that end as `FAILED`, `TIMED-OUT` or `ABORTED`, and errors while polling, do not trigger an abort. You can also stop a run yourself with `$client->abort($runId)`.
 
 ### Run timeout
@@ -239,6 +255,8 @@ try {
     echo "API error: {$e->getMessage()}\n";
 }
 ```
+
+Retry rules: rate limits (429, waiting at least the `Retry-After` header, given in seconds or as HTTP date), server errors (5xx) and connection failures are retried up to `maxRetries` times on polling and the dataset fetch. Starting a run is only repeated after a 429 or a failed connection, never after a 5xx or a timeout, because the run may already exist and a repeat would be billed twice. 402 and other 4xx statuses are never retried, and neither is the abort call. When the retries are used up, or a `Retry-After` exceeds `retryMaxDelay`, the usual exception is thrown (`RateLimitException` with `$e->retryAfter` for a 429, otherwise `ApiException`).
 
 HTTP 402 (Apify monthly usage or spending limit reached) throws `SpendingLimitException`, a subclass of `ApiException` (so existing `catch (ApiException)` keeps working; catch it first to handle it separately). It has the code `402`, the Apify error `type` from the response body as `$e->errorType` (`null` when the body is not parseable), and the API's message (control characters stripped, capped at 500 characters) as the exception message. It is thrown on run start, polling, dataset fetch and abort, and never retried: the client makes exactly one request.
 

@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace GYGScraper;
 
+use Closure;
 use GuzzleHttp\Client as HttpClient;
 use GuzzleHttp\ClientInterface;
+use GuzzleHttp\Exception\BadResponseException;
+use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Exception\GuzzleException;
 use GYGScraper\DTO\Activity;
 use GYGScraper\DTO\Review;
@@ -15,6 +18,7 @@ use GYGScraper\Exception\RateLimitException;
 use GYGScraper\Exception\SpendingLimitException;
 use GYGScraper\Support\InputValidator;
 use InvalidArgumentException;
+use Psr\Http\Message\ResponseInterface;
 
 final class Client
 {
@@ -33,10 +37,19 @@ final class Client
 
     private ?string $apiKey = null;
 
-    public function __construct(?Config $config = null, ?ClientInterface $http = null)
+    /** @var Closure(float): void */
+    private readonly Closure $sleeper;
+
+    /**
+     * @param  (Closure(float): void)|null  $sleeper  Waits the given seconds between retries; replaced in tests.
+     */
+    public function __construct(?Config $config = null, ?ClientInterface $http = null, ?Closure $sleeper = null)
     {
         $this->config = $config ?? new Config;
         $this->http = $http ?? new HttpClient;
+        $this->sleeper = $sleeper ?? static function (float $seconds): void {
+            usleep((int) round($seconds * 1_000_000));
+        };
     }
 
     /**
@@ -215,7 +228,7 @@ final class Client
                 $query['timeout'] = $apifyTimeout;
             }
 
-            $response = $this->http->request(
+            $response = $this->send(
                 'POST',
                 $this->url("/acts/{$actorId}/runs"),
                 $this->options([
@@ -314,7 +327,7 @@ final class Client
                 throw new ApiException('Invalid API response: missing run ID');
             }
 
-            $response = $this->http->request(
+            $response = $this->send(
                 'GET',
                 $this->url("/actor-runs/{$runId}"),
                 $this->options(['query' => ['waitForFinish' => min(self::MAX_WAIT_SECONDS, $remaining)]])
@@ -337,7 +350,7 @@ final class Client
     private function fetchDataset(string $datasetId, callable $mapper, ?int $runTimeout = null): array
     {
         try {
-            $response = $this->http->request(
+            $response = $this->send(
                 'GET',
                 $this->url("/datasets/{$datasetId}/items"),
                 $this->options()
@@ -359,6 +372,82 @@ final class Client
         } catch (GuzzleException $e) {
             throw $this->spendingLimit($e) ?? new ApiException('Failed to fetch dataset: '.$e->getMessage(), 0, $e);
         }
+    }
+
+    /**
+     * Sends a request and retries what is safe to repeat: rate limits (429, the request was not processed), server
+     * errors (5xx) and connection failures. Starting a run (POST) is only repeated after a 429 or a failed
+     * connection, because after a 5xx or a timeout the run may already exist and a repeat would bill it twice.
+     * Other 4xx statuses (402 included) are never retried. When the retries are used up, or a `Retry-After` exceeds
+     * `Config::$retryMaxDelay`, the last Guzzle exception is rethrown for the usual mapping.
+     *
+     * @param  array<string, mixed>  $options
+     *
+     * @throws GuzzleException
+     */
+    private function send(string $method, string $url, array $options): ResponseInterface
+    {
+        for ($attempt = 0; ; $attempt++) {
+            try {
+                return $this->http->request($method, $url, $options);
+            } catch (BadResponseException $e) {
+                $status = $e->getResponse()->getStatusCode();
+                $retryable = $status === 429 || ($status >= 500 && $method !== 'POST');
+                $delay = $retryable && $attempt < $this->config->maxRetries
+                    ? $this->retryDelay($attempt, $status === 429 ? $this->retryAfter($e->getResponse()) : null)
+                    : null;
+
+                if ($delay === null) {
+                    throw $e;
+                }
+            } catch (GuzzleException $e) {
+                // A failed connection never reached the server, so it is safe to repeat even for POST.
+                $retryable = $e instanceof ConnectException || $method !== 'POST';
+
+                if (! $retryable || $attempt >= $this->config->maxRetries) {
+                    throw $e;
+                }
+
+                $delay = $this->retryDelay($attempt, null) ?? 0.0;
+            }
+
+            ($this->sleeper)($delay);
+        }
+    }
+
+    /**
+     * Seconds to wait before the next retry: exponential from the base delay with 50 to 100 percent jitter, at least
+     * the server's `Retry-After`. Null when the server asks for a longer wait than the configured maximum.
+     */
+    private function retryDelay(int $attempt, ?int $retryAfter): ?float
+    {
+        if ($retryAfter !== null && $retryAfter > $this->config->retryMaxDelay) {
+            return null;
+        }
+
+        $backoff = min($this->config->retryMaxDelay, $this->config->retryBaseDelay * (2 ** $attempt));
+
+        return max($backoff * (random_int(500, 1000) / 1000), (float) ($retryAfter ?? 0));
+    }
+
+    /**
+     * The `Retry-After` header in whole seconds, from its delay-seconds or HTTP-date form. Null when missing or invalid.
+     */
+    private function retryAfter(ResponseInterface $response): ?int
+    {
+        $value = trim($response->getHeaderLine('Retry-After'));
+
+        if ($value === '') {
+            return null;
+        }
+
+        if (ctype_digit($value)) {
+            return (int) $value;
+        }
+
+        $timestamp = strtotime($value);
+
+        return $timestamp === false ? null : max(0, $timestamp - time());
     }
 
     private function url(string $path): string
@@ -457,7 +546,7 @@ final class Client
             $statusCode = $response->getStatusCode();
 
             if ($statusCode === 429) {
-                $retryAfter = (int) ($response->getHeader('Retry-After')[0] ?? 60);
+                $retryAfter = $this->retryAfter($response) ?? 60;
 
                 return new RateLimitException('Rate limit exceeded', $retryAfter);
             }

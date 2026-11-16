@@ -45,6 +45,7 @@ src/
   Exception/
     ApiException.php      # Base API exception
     RateLimitException.php
+    SpendingLimitException.php  # HTTP 402, extends ApiException
     MissingApiKeyException.php  # thrown on first API call when no key is available
 tests/
 ```

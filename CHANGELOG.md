@@ -6,6 +6,7 @@ All notable changes to this project are documented in this file. The format is b
 
 ### Added
 
+- `SpendingLimitException` (extends `ApiException`) for HTTP 402 (Apify usage or spending limit reached) on run start, polling, dataset fetch and abort: code `402`, `$errorType` (the Apify error `type`, `null` if the body is unparseable), the API message (control characters stripped, max 500 characters) as message, optional `$runId`. Never retried. Other statuses are unchanged.
 - Apify run timeout: `Config::$runTimeout` (?int seconds) and an optional last `runTimeout` argument on `scrapeActivities()` and `scrapeReviews()`, sent as the `timeout` query of the run start only. Per-call value wins over `Config::$runTimeout`; `0` sends nothing (Actor default); negative values throw `InvalidArgumentException`.
 - `toArray()` and `JsonSerializable` on `Activity` and `Review`, in the Actor's camelCase dataset field names, so results can be stored and restored with `fromArray()`.
 - When `Config::$timeout` expires while waiting for a run, the client aborts the run (best effort, own 10 second timeout, abort errors swallowed) and throws an `ApiException` saying the run was aborted (only if the abort succeeded). `ApiException::$runId` carries the run ID. New public `Client::abort(string $runId)`.

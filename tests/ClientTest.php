@@ -14,6 +14,7 @@ use GYGScraper\Config;
 use GYGScraper\Exception\ApiException;
 use GYGScraper\Exception\MissingApiKeyException;
 use GYGScraper\Exception\RateLimitException;
+use GYGScraper\Exception\SpendingLimitException;
 use GYGScraper\ReviewSort;
 
 /**
@@ -594,4 +595,91 @@ test('the abort request carries no run timeout', function () {
 
     expect(queryOf($history, 0)['timeout'])->toBe('100')
         ->and(queryOf($history, 1))->not->toHaveKey('timeout');
+});
+
+function limitBody(): string
+{
+    return json_encode(
+        ['error' => ['type' => 'platform-feature-disabled', 'message' => "Monthly usage hard limit exceeded\n"]],
+        JSON_THROW_ON_ERROR
+    );
+}
+
+test('HTTP 402 on run start throws SpendingLimitException with code and error type, one request', function () {
+    $history = [];
+    $client = makeClient([new Response(402, [], limitBody())], $history);
+
+    try {
+        $client->scrapeReviews(activityId: 1);
+        $this->fail('SpendingLimitException expected');
+    } catch (SpendingLimitException $e) {
+        expect($e)->toBeInstanceOf(ApiException::class)
+            ->and($e->getCode())->toBe(402)
+            ->and($e->errorType)->toBe('platform-feature-disabled')
+            ->and($e->getMessage())->toBe('Monthly usage hard limit exceeded')
+            ->and($history)->toHaveCount(1);
+    }
+});
+
+test('HTTP 402 while polling throws SpendingLimitException without retry', function () {
+    $history = [];
+    $client = makeClient([runResponse('RUNNING'), new Response(402, [], limitBody())], $history);
+
+    expect(fn () => $client->scrapeReviews(activityId: 1))->toThrow(SpendingLimitException::class)
+        ->and($history)->toHaveCount(2);
+});
+
+test('HTTP 402 on dataset fetch throws SpendingLimitException', function () {
+    $history = [];
+    $client = makeClient([runResponse('SUCCEEDED'), new Response(402, [], limitBody())], $history);
+
+    try {
+        $client->scrapeReviews(activityId: 1);
+        $this->fail('SpendingLimitException expected');
+    } catch (SpendingLimitException $e) {
+        expect($e->getCode())->toBe(402)->and($e->errorType)->toBe('platform-feature-disabled')
+            ->and($history)->toHaveCount(2);
+    }
+});
+
+test('HTTP 402 on abort throws SpendingLimitException carrying the run ID', function () {
+    $client = makeClient([new Response(402, [], limitBody())]);
+
+    try {
+        $client->abort('run9');
+        $this->fail('SpendingLimitException expected');
+    } catch (SpendingLimitException $e) {
+        expect($e->runId)->toBe('run9');
+    }
+});
+
+test('HTTP 402 with an unparseable body has a null error type and a generic message', function (string $body) {
+    $client = makeClient([new Response(402, [], $body)]);
+
+    try {
+        $client->scrapeReviews(activityId: 1);
+        $this->fail('SpendingLimitException expected');
+    } catch (SpendingLimitException $e) {
+        expect($e->errorType)->toBeNull()
+            ->and($e->getCode())->toBe(402)
+            ->and($e->getMessage())->toBe('Apify usage or spending limit reached (HTTP 402)');
+    }
+})->with(['not json', '', '{"error":"x"}', '[]']);
+
+test('HTTP 402 message is capped at 500 characters and stripped of control characters', function () {
+    $body = json_encode(['error' => ['type' => 't', 'message' => "a\x01b".str_repeat('x', 900)]], JSON_THROW_ON_ERROR);
+    $client = makeClient([new Response(402, [], $body)]);
+
+    try {
+        $client->scrapeReviews(activityId: 1);
+        $this->fail('SpendingLimitException expected');
+    } catch (SpendingLimitException $e) {
+        expect(mb_strlen($e->getMessage()))->toBe(500)->and($e->getMessage())->toStartWith('a b');
+    }
+});
+
+test('other statuses are unchanged by the 402 mapping', function () {
+    $client = makeClient([new Response(403, [], limitBody())]);
+
+    expect(fn () => $client->scrapeReviews(activityId: 1))->toThrow(ApiException::class, 'API request failed');
 });

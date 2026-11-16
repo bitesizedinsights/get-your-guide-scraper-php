@@ -12,6 +12,7 @@ use GYGScraper\DTO\Review;
 use GYGScraper\Exception\ApiException;
 use GYGScraper\Exception\MissingApiKeyException;
 use GYGScraper\Exception\RateLimitException;
+use GYGScraper\Exception\SpendingLimitException;
 use GYGScraper\Support\InputValidator;
 use InvalidArgumentException;
 
@@ -174,7 +175,7 @@ final class Client
                 $this->options(['timeout' => self::ABORT_TIMEOUT_SECONDS])
             );
         } catch (GuzzleException $e) {
-            $this->handleGuzzleException($e);
+            $this->handleGuzzleException($e, $runId);
         }
     }
 
@@ -356,7 +357,7 @@ final class Client
 
             return $mapped;
         } catch (GuzzleException $e) {
-            throw new ApiException('Failed to fetch dataset: '.$e->getMessage(), 0, $e);
+            throw $this->spendingLimit($e) ?? new ApiException('Failed to fetch dataset: '.$e->getMessage(), 0, $e);
         }
     }
 
@@ -400,7 +401,55 @@ final class Client
      * @throws ApiException
      * @throws RateLimitException
      */
-    private function handleGuzzleException(GuzzleException $e): never
+    private function handleGuzzleException(GuzzleException $e, ?string $runId = null): never
+    {
+        throw $this->spendingLimit($e, $runId) ?? $this->mapException($e);
+    }
+
+    /**
+     * Maps HTTP 402 (Apify usage or spending limit) to a SpendingLimitException, anything else to null.
+     */
+    private function spendingLimit(GuzzleException $e, ?string $runId = null): ?SpendingLimitException
+    {
+        $response = method_exists($e, 'getResponse') ? $e->getResponse() : null;
+
+        if ($response === null || $response->getStatusCode() !== SpendingLimitException::STATUS_CODE) {
+            return null;
+        }
+
+        $type = null;
+        $text = '';
+
+        try {
+            $body = json_decode((string) $response->getBody(), true);
+        } catch (\Throwable) {
+            $body = null;
+        }
+
+        $error = is_array($body) ? ($body['error'] ?? null) : null;
+
+        if (is_array($error)) {
+            $type = is_string($error['type'] ?? null) && $error['type'] !== ''
+                ? mb_substr($this->cleanText($error['type']), 0, 100)
+                : null;
+            $text = is_string($error['message'] ?? null) ? mb_substr($this->cleanText($error['message']), 0, 500) : '';
+        }
+
+        $message = $text === '' ? 'Apify usage or spending limit reached (HTTP 402)' : $text;
+
+        return new SpendingLimitException($message, $type === '' ? null : $type, $e, $runId);
+    }
+
+    private function cleanText(string $text): string
+    {
+        return trim((string) preg_replace('/[\x00-\x1F\x7F]+/u', ' ', mb_substr($text, 0, 2000)));
+    }
+
+    /**
+     * @throws ApiException
+     * @throws RateLimitException
+     */
+    private function mapException(GuzzleException $e): ApiException
     {
         $response = method_exists($e, 'getResponse') ? $e->getResponse() : null;
 
@@ -409,10 +458,11 @@ final class Client
 
             if ($statusCode === 429) {
                 $retryAfter = (int) ($response->getHeader('Retry-After')[0] ?? 60);
-                throw new RateLimitException('Rate limit exceeded', $retryAfter);
+
+                return new RateLimitException('Rate limit exceeded', $retryAfter);
             }
         }
 
-        throw new ApiException('API request failed: '.$e->getMessage(), 0, $e);
+        return new ApiException('API request failed: '.$e->getMessage(), 0, $e);
     }
 }

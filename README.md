@@ -200,15 +200,20 @@ Free-plan users get 5 runs in total, and each run returns at most 10 results: `s
 ```php
 use GYGScraper\Exception\ApiException;
 use GYGScraper\Exception\RateLimitException;
+use GYGScraper\Exception\SpendingLimitException;
 
 try {
     $activities = $client->scrapeActivities(city: 'Rome');
 } catch (RateLimitException $e) {
     sleep($e->retryAfter);
+} catch (SpendingLimitException $e) {
+    echo "Apify limit reached ({$e->errorType}): {$e->getMessage()}\n";
 } catch (ApiException $e) {
     echo "API error: {$e->getMessage()}\n";
 }
 ```
+
+HTTP 402 (Apify monthly usage or spending limit reached) throws `SpendingLimitException`, a subclass of `ApiException` (so existing `catch (ApiException)` keeps working; catch it first to handle it separately). It has the code `402`, the Apify error `type` from the response body as `$e->errorType` (`null` when the body is not parseable), and the API's message (control characters stripped, capped at 500 characters) as the exception message. It is thrown on run start, polling, dataset fetch and abort, and never retried: the client makes exactly one request.
 
 If the Actor run ends with any status other than `SUCCEEDED` (`FAILED`, `TIMED-OUT`, `ABORTED`), an `ApiException` is thrown with the status and the run's status message, e.g. `Actor run ended with status TIMED-OUT: <statusMessage>`. The dataset is not fetched in that case. The raw status message (capped at 2000 characters) is available as `$e->statusMessage` (`null` when the run has none) and the Apify run ID as `$e->runId`; the text appended to the exception message has control characters stripped and is capped at 500 characters.
 
